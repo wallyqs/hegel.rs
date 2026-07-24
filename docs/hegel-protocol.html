@@ -288,6 +288,31 @@
   .arch-link .bar { font-size: 1.3rem; color: var(--accent); line-height: 1; }
   @media (max-width: 619px) { .arch-link .bar { transform: rotate(90deg); } }
 
+  /* ---------- SVG diagrams ---------- */
+  .diagram { overflow-x: auto; margin: 1.4rem 0 0.3rem; }
+  .diagram svg { width: 100%; min-width: 560px; max-width: 780px; height: auto; display: block; margin: 0 auto; }
+  .dg-cap { text-align: center; font-size: 0.8rem; color: var(--faint); margin: 0.4rem auto 1.4rem; max-width: 62ch; }
+  svg .box { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.5; }
+  svg .box-accent { fill: var(--accent-wash); stroke: var(--accent); stroke-width: 1.5; }
+  svg .box-sub { fill: var(--surface-2); stroke: var(--line); stroke-width: 1; }
+  svg .t-title { fill: var(--ink); font: 600 15px var(--sans); }
+  svg .t-sub { fill: var(--muted); font: 12px var(--mono); }
+  svg .t-node { fill: var(--ink); font: 600 12px var(--mono); }
+  svg .t-small { fill: var(--muted); font: 10.5px var(--mono); }
+  svg .t-tiny { fill: var(--muted); font: 9.5px var(--mono); }
+  svg .t-lane { fill: var(--accent-ink); font: 600 13px var(--mono); }
+  svg .t-msg { fill: var(--ink-soft); font: 11px var(--mono); }
+  svg .t-loop { fill: var(--faint); font: 10px var(--mono); }
+  svg .t-bnd { fill: var(--accent-ink); font: 600 11px var(--mono); letter-spacing: 0.06em; }
+  svg .flow { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+  svg .bnd { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  svg .lifeline { stroke: var(--line-strong); stroke-width: 1.4; stroke-dasharray: 4 5; }
+  svg .msg { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  svg .msg-ret { stroke: var(--faint); stroke-width: 1.3; fill: none; stroke-dasharray: 6 4; }
+  svg .loopbox { fill: none; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
+  svg .ah-accent { fill: var(--accent); }
+  svg .ah-muted { fill: var(--muted); }
+
   /* ---------- Lifecycle stepper ---------- */
   .steps { list-style: none; counter-reset: step; padding: 0; margin: 1.4rem 0; }
   .steps > li {
@@ -493,28 +518,123 @@
         </p>
       </div>
 
-      <div class="arch">
-        <div class="arch-box">
-          <span class="label">Frontend / client</span>
-          <span class="name">hegeltest</span>
-          <span class="sub">The <code class="inl">hegel</code> crate: <code class="inl">#[hegel::test]</code>, generators, the <code class="inl">TestCase</code> API, output formatting. A thin C-ABI shim lives in <code class="inl">src/ffi.rs</code>.</span>
-        </div>
-        <div class="arch-link">
-          <span class="bar">⟷</span>
-          <span>hegel_* C ABI</span>
-        </div>
-        <div class="arch-box engine">
-          <span class="label">Engine / "server"</span>
-          <span class="name">libhegel</span>
-          <span class="sub">The <code class="inl">hegel-c</code> crate: choice sequences, generation, targeting, the shrinker, the failure database, and blob encoding.</span>
-        </div>
+      <div class="diagram">
+        <svg viewBox="0 0 760 560" role="img" aria-label="Layered architecture: your test calls the hegeltest frontend, which calls src/ffi.rs, which crosses the C ABI into the libhegel engine.">
+          <defs>
+            <marker id="ahA" markerWidth="10" markerHeight="10" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" class="ah-accent"/></marker>
+          </defs>
+          <rect class="box" x="130" y="16" width="500" height="56" rx="12"/>
+          <text class="t-title" x="380" y="41" text-anchor="middle">Your test</text>
+          <text class="t-sub" x="380" y="60" text-anchor="middle">#[hegel::test] — draw values, assert a property</text>
+          <line class="flow" x1="380" y1="72" x2="380" y2="98" marker-start="url(#ahA)" marker-end="url(#ahA)"/>
+          <rect class="box" x="70" y="98" width="620" height="62" rx="12"/>
+          <text class="t-title" x="380" y="123" text-anchor="middle">hegeltest — the frontend</text>
+          <text class="t-sub" x="380" y="143" text-anchor="middle">crate hegel · generators · TestCase · runner   +   hegel-macros</text>
+          <line class="flow" x1="380" y1="160" x2="380" y2="186" marker-start="url(#ahA)" marker-end="url(#ahA)"/>
+          <rect class="box" x="70" y="186" width="620" height="62" rx="12"/>
+          <text class="t-title" x="380" y="211" text-anchor="middle">src/ffi.rs — safe C-ABI wrappers</text>
+          <text class="t-sub" x="380" y="231" text-anchor="middle">SettingsHandle · RunHandle · CTestCase · StringGenerator · RunResult</text>
+          <line class="flow" x1="380" y1="248" x2="380" y2="286" marker-start="url(#ahA)" marker-end="url(#ahA)"/>
+          <line class="bnd" x1="40" y1="286" x2="720" y2="286"/>
+          <rect x="288" y="276" width="184" height="20" fill="var(--bg)"/>
+          <text class="t-bnd" x="380" y="290" text-anchor="middle">C ABI · hegel_* · hegel.h</text>
+          <rect class="box-accent" x="40" y="306" width="680" height="238" rx="14"/>
+          <text class="t-title" x="380" y="333" text-anchor="middle">libhegel — the native engine</text>
+          <text class="t-sub" x="380" y="352" text-anchor="middle">crate hegeltest-c · lib hegel_c · shipped as libhegel-&lt;os&gt;-&lt;arch&gt;</text>
+          <rect class="box-sub" x="60" y="370" width="112" height="156" rx="9"/>
+          <text class="t-node" x="116" y="398" text-anchor="middle">core</text>
+          <text class="t-small" x="116" y="420" text-anchor="middle">choice</text>
+          <text class="t-small" x="116" y="434" text-anchor="middle">sequence</text>
+          <text class="t-small" x="116" y="448" text-anchor="middle">&amp; state</text>
+          <rect class="box-sub" x="192" y="370" width="112" height="156" rx="9"/>
+          <text class="t-node" x="248" y="398" text-anchor="middle">draws</text>
+          <text class="t-small" x="248" y="420" text-anchor="middle">typed</text>
+          <text class="t-small" x="248" y="434" text-anchor="middle">generators</text>
+          <rect class="box-sub" x="324" y="370" width="112" height="156" rx="9"/>
+          <text class="t-node" x="380" y="398" text-anchor="middle">shrinker</text>
+          <text class="t-small" x="380" y="420" text-anchor="middle">minimize the</text>
+          <text class="t-small" x="380" y="434" text-anchor="middle">example</text>
+          <rect class="box-sub" x="456" y="370" width="112" height="156" rx="9"/>
+          <text class="t-node" x="512" y="398" text-anchor="middle">test_runner</text>
+          <text class="t-small" x="512" y="420" text-anchor="middle">replay · gen</text>
+          <text class="t-small" x="512" y="434" text-anchor="middle">target · shrink</text>
+          <rect class="box-sub" x="588" y="370" width="112" height="156" rx="9"/>
+          <text class="t-node" x="644" y="398" text-anchor="middle">database</text>
+          <text class="t-small" x="644" y="420" text-anchor="middle">persist &amp;</text>
+          <text class="t-small" x="644" y="434" text-anchor="middle">replay fails</text>
+        </svg>
       </div>
+      <p class="dg-cap">Calls fan down through the frontend and cross the C ABI once; every language binding links the same libhegel engine.</p>
 
       <p class="muted">
         There is no background thread. A run handle is a <em>suspended engine</em> — a future the client
         resumes on its own thread every time it asks for the next test case. All generation, mutation,
         and shrinking happen inside those calls.
       </p>
+
+      <h3>Where the name "libhegel" comes from</h3>
+      <p>
+        <code class="inl">libhegel</code> is not a separate project — it is the engine crate
+        (<code class="inl">hegel-c</code>, package <code class="inl">hegeltest-c</code>) <strong>compiled as a
+        C library</strong>. The crate declares <code class="inl">crate-type = ["cdylib", "staticlib",
+        "rlib"]</code>, so Cargo emits a native shared and static library; by the usual Unix convention the
+        file gains a <code class="inl">lib</code> prefix. The Cargo lib is technically named
+        <code class="inl">hegel_c</code> — so it can coexist with the frontend's <code class="inl">hegel</code>
+        lib in one dependency graph — which produces <code class="inl">libhegel_c.{so,a}</code> locally. But
+        the header, the exported <code class="inl">hegel_*</code> symbols, and the release binaries are all
+        branded <code class="inl">libhegel</code>: every GitHub release ships a
+        <code class="inl">libhegel-&lt;os&gt;-&lt;arch&gt;</code> artifact for other language bindings to link
+        against. In short, "libhegel" is the distributable native form of the engine.
+      </p>
+
+      <h3>The build pipeline</h3>
+      <p>
+        A natural question: is Rust the source of truth, and is it "compiled to C"? The first half is yes;
+        the second is a common misconception. <strong>Nothing is transpiled to C.</strong> The Rust source
+        is the single source of truth, and the compiler emits a native library that merely
+        <em>speaks</em> the C ABI — a stable calling convention — directly. The only C artifact that is
+        <em>generated</em> is the header.
+      </p>
+      <div class="diagram">
+        <svg viewBox="0 0 760 300" role="img" aria-label="Build pipeline: the Rust source in hegel-c/src/lib.rs is compiled by cargo into the libhegel native library, and cbindgen generates the hegel.h header from the same source.">
+          <defs>
+            <marker id="ahP" markerWidth="10" markerHeight="10" refX="6.5" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" class="ah-accent"/></marker>
+          </defs>
+          <rect class="box" x="24" y="108" width="196" height="100" rx="12"/>
+          <text class="t-node" x="122" y="140" text-anchor="middle">hegel-c/src/lib.rs</text>
+          <text class="t-small" x="122" y="160" text-anchor="middle">#[no_mangle]</text>
+          <text class="t-small" x="122" y="174" text-anchor="middle">extern &quot;C&quot; fns</text>
+          <text class="t-bnd" x="122" y="194" text-anchor="middle">source of truth</text>
+
+          <path class="flow" d="M220,142 C270,120 268,90 300,82" fill="none" marker-end="url(#ahP)"/>
+          <path class="flow" d="M220,176 C270,200 268,232 300,240" fill="none" marker-end="url(#ahP)"/>
+
+          <rect class="box-sub" x="300" y="54" width="152" height="54" rx="9"/>
+          <text class="t-small" x="376" y="78" text-anchor="middle">cargo build</text>
+          <text class="t-small" x="376" y="94" text-anchor="middle">-p hegeltest-c</text>
+          <line class="flow" x1="452" y1="81" x2="524" y2="81" marker-end="url(#ahP)"/>
+          <rect class="box-accent" x="524" y="46" width="212" height="72" rx="11"/>
+          <text class="t-node" x="630" y="72" text-anchor="middle">libhegel</text>
+          <text class="t-small" x="630" y="90" text-anchor="middle">cdylib + staticlib</text>
+          <text class="t-tiny" x="630" y="105" text-anchor="middle">libhegel-&lt;os&gt;-&lt;arch&gt;</text>
+
+          <rect class="box-sub" x="300" y="214" width="152" height="54" rx="9"/>
+          <text class="t-small" x="376" y="238" text-anchor="middle">cbindgen</text>
+          <text class="t-small" x="376" y="254" text-anchor="middle">(build.rs)</text>
+          <line class="flow" x1="452" y1="241" x2="524" y2="241" marker-end="url(#ahP)"/>
+          <rect class="box" x="524" y="206" width="212" height="72" rx="11"/>
+          <text class="t-node" x="630" y="232" text-anchor="middle">hegel.h</text>
+          <text class="t-small" x="630" y="250" text-anchor="middle">C header · checked in</text>
+          <text class="t-tiny" x="630" y="265" text-anchor="middle">build fails if stale</text>
+        </svg>
+      </div>
+      <p class="dg-cap">One Rust source, two outputs: <code>cargo</code> compiles the engine to a native C-ABI library; <code>cbindgen</code> (run from <code>build.rs</code>) regenerates the header.</p>
+      <ul class="clean">
+        <li><strong>Source of truth</strong> — <code class="inl">hegel-c/src/lib.rs</code> holds the <code class="inl">#[no_mangle] extern "C"</code> <code class="inl">hegel_*</code> functions.</li>
+        <li><strong>The library</strong> — <code class="inl">cargo build -p hegeltest-c</code> compiles that Rust straight to machine code as a <code class="inl">cdylib</code> + <code class="inl">staticlib</code>. rustc/LLVM emits the binary directly; there is no intermediate C source and no C compiler in the loop.</li>
+        <li><strong>The header</strong> — <code class="inl">hegel.h</code> is the one generated C artifact: <code class="inl">cbindgen</code> reads the Rust source (driven by <code class="inl">hegel-c/build.rs</code>, configured by <code class="inl">cbindgen.toml</code>) and writes the declarations. It is checked into the repo and refreshed with <code class="inl">just c-header</code>.</li>
+        <li><strong>Drift guard</strong> — a normal build compares the freshly generated header against the checked-in one and <strong>panics if they differ</strong>, so the header can never fall out of sync with the Rust it describes.</li>
+      </ul>
     </section>
 
     <hr class="divider">
@@ -587,6 +707,51 @@
       <p class="sec-eyebrow">04 — Sequence</p>
       <h2>The run lifecycle</h2>
       <p>A full property-test run (mode <code class="inl">HEGEL_MODE_TEST_RUN</code>) walks these steps.</p>
+      <div class="diagram">
+        <svg viewBox="0 0 760 600" role="img" aria-label="Sequence of calls between the client and the engine: run_start, then a loop of next_test_case, per-draw generate and mark_complete, then run_result.">
+          <defs>
+            <marker id="ahM" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" class="ah-muted"/></marker>
+          </defs>
+          <rect class="box-accent" x="70" y="14" width="170" height="40" rx="9"/>
+          <text class="t-lane" x="155" y="39" text-anchor="middle">Client (frontend)</text>
+          <rect class="box-accent" x="520" y="14" width="170" height="40" rx="9"/>
+          <text class="t-lane" x="605" y="39" text-anchor="middle">Engine (libhegel)</text>
+          <line class="lifeline" x1="155" y1="54" x2="155" y2="576"/>
+          <line class="lifeline" x1="605" y1="54" x2="605" y2="576"/>
+
+          <line class="msg" x1="155" y1="92" x2="605" y2="92" marker-end="url(#ahM)"/>
+          <text class="t-msg" x="380" y="86" text-anchor="middle">hegel_run_start(settings)</text>
+          <text class="t-small" x="380" y="112" text-anchor="middle">builds the run — no case generated yet</text>
+
+          <rect class="loopbox" x="96" y="126" width="580" height="372" rx="6"/>
+          <text class="t-loop" x="108" y="142" text-anchor="start">outer loop — until hegel_next_test_case yields NULL</text>
+
+          <line class="msg" x1="155" y1="172" x2="605" y2="172" marker-end="url(#ahM)"/>
+          <text class="t-msg" x="360" y="166" text-anchor="middle">hegel_next_test_case</text>
+          <rect class="box-sub" x="502" y="184" width="200" height="42" rx="8"/>
+          <text class="t-tiny" x="602" y="202" text-anchor="middle">resume the suspended engine —</text>
+          <text class="t-tiny" x="602" y="216" text-anchor="middle">replay · generate · mutate · shrink</text>
+          <line class="msg-ret" x1="605" y1="250" x2="155" y2="250" marker-end="url(#ahM)"/>
+          <text class="t-msg" x="380" y="244" text-anchor="middle">test-case handle  (or NULL → run done)</text>
+
+          <rect class="loopbox" x="126" y="272" width="520" height="116" rx="6"/>
+          <text class="t-loop" x="138" y="288" text-anchor="start">drive the test body — repeat per draw</text>
+          <line class="msg" x1="155" y1="320" x2="605" y2="320" marker-end="url(#ahM)"/>
+          <text class="t-msg" x="380" y="314" text-anchor="middle">hegel_generate_* · start/stop_span · target</text>
+          <line class="msg-ret" x1="605" y1="358" x2="155" y2="358" marker-end="url(#ahM)"/>
+          <text class="t-msg" x="380" y="352" text-anchor="middle">drawn value  (or STOP_TEST if budget spent)</text>
+
+          <line class="msg" x1="155" y1="416" x2="605" y2="416" marker-end="url(#ahM)"/>
+          <text class="t-msg" x="380" y="410" text-anchor="middle">hegel_mark_complete(status, origin)</text>
+          <text class="t-loop" x="380" y="466" text-anchor="middle">↑  loop back for the next test case</text>
+
+          <line class="msg" x1="155" y1="524" x2="605" y2="524" marker-end="url(#ahM)"/>
+          <text class="t-msg" x="380" y="518" text-anchor="middle">hegel_run_result</text>
+          <line class="msg-ret" x1="605" y1="558" x2="155" y2="558" marker-end="url(#ahM)"/>
+          <text class="t-msg" x="380" y="552" text-anchor="middle">PASSED · FAILED (+ counterexamples) · ERROR</text>
+        </svg>
+      </div>
+      <p class="dg-cap">Every arrow runs on the client's own thread — the engine has no thread of its own; it is resumed inside each call.</p>
       <ol class="steps">
         <li>
           <h4>Create a context</h4>
