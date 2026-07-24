@@ -23,7 +23,15 @@ in Go. But its Core IR is built for LLM orchestration: its type system is
 `string/bool/int/i64/f64/bytes` with no unsigned/fixed-width integers, and it
 has **no bitwise or float-bits intrinsics**. Hegel's core is fundamentally
 `u64` bit-twiddling and `f64`↔bits reinterpretation, so AxIR cannot express it
-as-is. Hence a small, purpose-built IR here, with Ax as the design reference.
+as-is.
+
+So we **adopt AxIR's textual Core format and extend it** with just the
+vocabulary we need. The IR module (`ir/float_index.axir`) is written in the same
+MLIR-like syntax Ax uses — `module`/`op core.func @name`/`body @entry(%p: T)`,
+flat-SSA Core bodies where every operand is a `%binding`, `core.const` /
+`core.call @fn(...)` / `core.call intrinsic.x(...)` / `core.if` / `core.return`
+— plus our additions: the `u64` type and the `intrinsic.bit.*`,
+`intrinsic.float.*`, and `intrinsic.cast.*` intrinsic families.
 
 ## What the spike proves
 
@@ -46,9 +54,8 @@ arbitrary bit patterns), **0 mismatches** for both emitted Go and emitted Python
 | Path | Role |
 |------|------|
 | `reference/ref.rs` | Rust reference: the `float_index` functions copied verbatim from `hegel-c/src/native/core/float_index.rs`, plus a golden-vector generator. The source of truth. |
-| `ir/build_ir.py` | Authoring helper that emits the IR module as JSON. |
-| `ir/float_index.ir.json` | **HegelIR**: the functional core expressed in a compact IR (types `u64/i64/f64/bool`; arithmetic, bit ops, float↔bits, casts; functions, `let`, `if`, `call`, recursion). |
-| `emitter/emit.go` | The emitter (à la AxIR's Go compiler): lowers one IR module to native Go or Python, encoding each language's integer/float semantics. |
+| `ir/float_index.axir` | **HegelIR**: the functional core expressed in AxIR-style text (adopted from Ax, extended with `u64` + `intrinsic.bit.*`/`float.*`/`cast.*`). The source of truth for codegen. |
+| `emitter/emit.go` | The emitter (à la AxIR's Go compiler): tokenizes + parses the `.axir` module and lowers it to native Go or Python, encoding each language's integer/float semantics. |
 | `targets/go/float_index_gen.go` | Generated Go (checked in, like Ax's `packages/<lang>`). Do not edit by hand — re-run `run.sh`. |
 | `targets/python/float_index_gen.py` | Generated Python (checked in). Do not edit by hand. |
 | `conformance/checker.go` | Go conformance checker: runs the vectors through the emitted Go. |

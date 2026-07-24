@@ -1,0 +1,275 @@
+module @hegel.float_index version "0.1" {
+  dialect @hegel.core version "0.1"
+
+  op core.func @encode_exponent {
+    type signature = "(u64) -> u64"
+    body @entry(%biased_exp: u64) {
+      %c2047 = core.const u64 2047
+      %is2047 = core.call intrinsic.eq(%biased_exp, %c2047)
+      core.if %is2047 {
+        core.return %c2047
+      }
+      %c1023 = core.const u64 1023
+      %ge = core.call intrinsic.gte(%biased_exp, %c1023)
+      core.if %ge {
+        %r = core.call intrinsic.sub(%biased_exp, %c1023)
+        core.return %r
+      }
+      %c2046 = core.const u64 2046
+      %r2 = core.call intrinsic.sub(%c2046, %biased_exp)
+      core.return %r2
+    }
+  }
+
+  op core.func @decode_exponent {
+    type signature = "(u64) -> u64"
+    body @entry(%enc: u64) {
+      %c2047 = core.const u64 2047
+      %is2047 = core.call intrinsic.eq(%enc, %c2047)
+      core.if %is2047 {
+        core.return %c2047
+      }
+      %c1023 = core.const u64 1023
+      %le = core.call intrinsic.lte(%enc, %c1023)
+      core.if %le {
+        %r = core.call intrinsic.add(%enc, %c1023)
+        core.return %r
+      }
+      %c2046 = core.const u64 2046
+      %r2 = core.call intrinsic.sub(%c2046, %enc)
+      core.return %r2
+    }
+  }
+
+  op core.func @reverse_bits_n {
+    type signature = "(u64, u64) -> u64"
+    body @entry(%val: u64, %n: u64) {
+      %c0 = core.const u64 0
+      %isz = core.call intrinsic.eq(%n, %c0)
+      core.if %isz {
+        core.return %c0
+      }
+      %c64 = core.const u64 64
+      %rev = core.call intrinsic.bit.reverse64(%val)
+      %sh = core.call intrinsic.sub(%c64, %n)
+      %r = core.call intrinsic.bit.shr(%rev, %sh)
+      core.return %r
+    }
+  }
+
+  op core.func @update_mantissa {
+    type signature = "(i64, u64) -> u64"
+    body @entry(%unbiased_exp: i64, %mantissa: u64) {
+      %zero_i = core.const i64 0
+      %le0 = core.call intrinsic.lte(%unbiased_exp, %zero_i)
+      core.if %le0 {
+        %c52 = core.const u64 52
+        %r = core.call @reverse_bits_n(%mantissa, %c52)
+        core.return %r
+      }
+      %c51i = core.const i64 51
+      %le51 = core.call intrinsic.lte(%unbiased_exp, %c51i)
+      core.if %le51 {
+        %c52i = core.const i64 52
+        %nfi = core.call intrinsic.sub(%c52i, %unbiased_exp)
+        %n_frac = core.call intrinsic.cast.i64_to_u64(%nfi)
+        %one = core.const u64 1
+        %shifted = core.call intrinsic.bit.shl(%one, %n_frac)
+        %frac_mask = core.call intrinsic.sub(%shifted, %one)
+        %frac = core.call intrinsic.bit.and(%mantissa, %frac_mask)
+        %xored = core.call intrinsic.bit.xor(%mantissa, %frac)
+        %revfrac = core.call @reverse_bits_n(%frac, %n_frac)
+        %r = core.call intrinsic.bit.or(%xored, %revfrac)
+        core.return %r
+      }
+      core.return %mantissa
+    }
+  }
+
+  op core.func @is_simple_float {
+    type signature = "(f64) -> bool"
+    body @entry(%x: f64) {
+      %sb = core.call intrinsic.float.signbit(%x)
+      %inf = core.call intrinsic.float.is_inf(%x)
+      %nan = core.call intrinsic.float.is_nan(%x)
+      %sb_or_inf = core.call intrinsic.or(%sb, %inf)
+      %bad = core.call intrinsic.or(%sb_or_inf, %nan)
+      %false = core.const bool false
+      core.if %bad {
+        core.return %false
+      }
+      %pow56f = core.const f64 72057594037927936
+      %ge = core.call intrinsic.gte(%x, %pow56f)
+      core.if %ge {
+        core.return %false
+      }
+      %i = core.call intrinsic.cast.f64_to_u64(%x)
+      %back = core.call intrinsic.cast.u64_to_f64(%i)
+      %eqv = core.call intrinsic.eq(%back, %x)
+      %pow56 = core.const u64 72057594037927936
+      %lt = core.call intrinsic.lt(%i, %pow56)
+      %res = core.call intrinsic.and(%eqv, %lt)
+      core.return %res
+    }
+  }
+
+  op core.func @float_to_index {
+    type signature = "(f64) -> u64"
+    body @entry(%x: f64) {
+      %simple = core.call @is_simple_float(%x)
+      core.if %simple {
+        %si = core.call intrinsic.cast.f64_to_u64(%x)
+        core.return %si
+      }
+      %bits = core.call intrinsic.float.to_bits(%x)
+      %c52 = core.const u64 52
+      %shr = core.call intrinsic.bit.shr(%bits, %c52)
+      %c2047 = core.const u64 2047
+      %biased_exp = core.call intrinsic.bit.and(%shr, %c2047)
+      %mmask = core.const u64 4503599627370495
+      %mantissa = core.call intrinsic.bit.and(%bits, %mmask)
+      %be_i = core.call intrinsic.cast.u64_to_i64(%biased_exp)
+      %c1023i = core.const i64 1023
+      %unbiased_exp = core.call intrinsic.sub(%be_i, %c1023i)
+      %mantissa_enc = core.call @update_mantissa(%unbiased_exp, %mantissa)
+      %exp_enc = core.call @encode_exponent(%biased_exp)
+      %bit63 = core.const u64 9223372036854775808
+      %expsh = core.call intrinsic.bit.shl(%exp_enc, %c52)
+      %hi = core.call intrinsic.bit.or(%bit63, %expsh)
+      %r = core.call intrinsic.bit.or(%hi, %mantissa_enc)
+      core.return %r
+    }
+  }
+
+  op core.func @index_to_float {
+    type signature = "(u64) -> f64"
+    body @entry(%i: u64) {
+      %c63 = core.const u64 63
+      %top = core.call intrinsic.bit.shr(%i, %c63)
+      %c0 = core.const u64 0
+      %isint = core.call intrinsic.eq(%top, %c0)
+      core.if %isint {
+        %m56 = core.const u64 72057594037927935
+        %integral = core.call intrinsic.bit.and(%i, %m56)
+        %f = core.call intrinsic.cast.u64_to_f64(%integral)
+        core.return %f
+      }
+      %c52 = core.const u64 52
+      %shr = core.call intrinsic.bit.shr(%i, %c52)
+      %c2047 = core.const u64 2047
+      %exp_enc = core.call intrinsic.bit.and(%shr, %c2047)
+      %biased_exp = core.call @decode_exponent(%exp_enc)
+      %mmask = core.const u64 4503599627370495
+      %mantissa_enc = core.call intrinsic.bit.and(%i, %mmask)
+      %be_i = core.call intrinsic.cast.u64_to_i64(%biased_exp)
+      %c1023i = core.const i64 1023
+      %unbiased_exp = core.call intrinsic.sub(%be_i, %c1023i)
+      %mantissa = core.call @update_mantissa(%unbiased_exp, %mantissa_enc)
+      %besh = core.call intrinsic.bit.shl(%biased_exp, %c52)
+      %bitsr = core.call intrinsic.bit.or(%besh, %mantissa)
+      %f2 = core.call intrinsic.float.from_bits(%bitsr)
+      core.return %f2
+    }
+  }
+
+  op core.func @min_reversed_in_range {
+    type signature = "(u64, u64, i64) -> u64"
+    body @entry(%lo: u64, %hi: u64, %n: i64) {
+      %zero_i = core.const i64 0
+      %isz = core.call intrinsic.eq(%n, %zero_i)
+      %c0 = core.const u64 0
+      core.if %isz {
+        core.return %c0
+      }
+      %one = core.const u64 1
+      %lop1 = core.call intrinsic.add(%lo, %one)
+      %k_lo = core.call intrinsic.bit.shr(%lop1, %one)
+      %k_hi = core.call intrinsic.bit.shr(%hi, %one)
+      %le = core.call intrinsic.lte(%k_lo, %k_hi)
+      core.if %le {
+        %onei = core.const i64 1
+        %nm1 = core.call intrinsic.sub(%n, %onei)
+        %rec = core.call @min_reversed_in_range(%k_lo, %k_hi, %nm1)
+        %two = core.const u64 2
+        %r = core.call intrinsic.mul(%rec, %two)
+        core.return %r
+      }
+      core.return %lo
+    }
+  }
+
+  op core.func @simplest_in_range {
+    type signature = "(f64, f64) -> f64"
+    body @entry(%lo: f64, %hi: f64) {
+      %c = core.call intrinsic.float.ceil(%lo)
+      %cle = core.call intrinsic.lte(%c, %hi)
+      %pow56f = core.const f64 72057594037927936
+      %clt = core.call intrinsic.lt(%c, %pow56f)
+      %inrange = core.call intrinsic.and(%cle, %clt)
+      core.if %inrange {
+        core.return %c
+      }
+      %lo_bits = core.call intrinsic.float.to_bits(%lo)
+      %hi_bits = core.call intrinsic.float.to_bits(%hi)
+      %c52 = core.const u64 52
+      %e_lo = core.call intrinsic.bit.shr(%lo_bits, %c52)
+      %e_hi = core.call intrinsic.bit.shr(%hi_bits, %c52)
+      %mmask = core.const u64 4503599627370495
+      %m_lo = core.call intrinsic.bit.and(%lo_bits, %mmask)
+      %m_hi = core.call intrinsic.bit.and(%hi_bits, %mmask)
+      %c1023 = core.const u64 1023
+      %cond = core.call intrinsic.gte(%e_lo, %c1023)
+      %ncond = core.call intrinsic.not(%cond)
+      %e = core.copy %e_lo
+      %m_min = core.copy %m_lo
+      %m_max = core.copy %m_hi
+      %eq_hilo = core.call intrinsic.eq(%e_hi, %e_lo)
+      %ne_hilo = core.call intrinsic.not(%eq_hilo)
+      core.if %ne_hilo {
+        %m_max = core.copy %mmask
+      }
+      core.if %ncond {
+        %e = core.copy %e_hi
+        %m_max = core.copy %m_hi
+        %eq_lohi = core.call intrinsic.eq(%e_lo, %e_hi)
+        %ne_lohi = core.call intrinsic.not(%eq_lohi)
+        core.if %ne_lohi {
+          %zero = core.const u64 0
+          %m_min = core.copy %zero
+        }
+      }
+      %c1023i = core.const i64 1023
+      %e_i = core.call intrinsic.cast.u64_to_i64(%e)
+      %unbiased = core.call intrinsic.sub(%e_i, %c1023i)
+      %c52i = core.const i64 52
+      %ge52 = core.call intrinsic.gte(%unbiased, %c52i)
+      core.if %ge52 {
+        %esh0 = core.call intrinsic.bit.shl(%e, %c52)
+        %bitsr0 = core.call intrinsic.bit.or(%esh0, %m_min)
+        %f0 = core.call intrinsic.float.from_bits(%bitsr0)
+        core.return %f0
+      }
+      %zero_i = core.const i64 0
+      %le0 = core.call intrinsic.lte(%unbiased, %zero_i)
+      %n_frac = core.copy %c52i
+      %nle0 = core.call intrinsic.not(%le0)
+      core.if %nle0 {
+        %sub = core.call intrinsic.sub(%c52i, %unbiased)
+        %n_frac = core.copy %sub
+      }
+      %one = core.const u64 1
+      %shl1 = core.call intrinsic.bit.shl(%one, %n_frac)
+      %low_mask = core.call intrinsic.sub(%shl1, %one)
+      %h = core.call intrinsic.bit.shr(%m_min, %n_frac)
+      %l_lo = core.call intrinsic.bit.and(%m_min, %low_mask)
+      %l_hi = core.call intrinsic.bit.and(%m_max, %low_mask)
+      %minrev = core.call @min_reversed_in_range(%l_lo, %l_hi, %n_frac)
+      %hsh = core.call intrinsic.bit.shl(%h, %n_frac)
+      %m_best = core.call intrinsic.bit.or(%hsh, %minrev)
+      %esh = core.call intrinsic.bit.shl(%e, %c52)
+      %bitsr = core.call intrinsic.bit.or(%esh, %m_best)
+      %f = core.call intrinsic.float.from_bits(%bitsr)
+      core.return %f
+    }
+  }
+}

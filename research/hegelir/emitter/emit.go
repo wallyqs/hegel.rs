@@ -1,64 +1,298 @@
-// HegelIR emitter: lowers one IR module to native Go or Python.
+// HegelIR emitter: parses an AxIR-style .axir module (MLIR-like text, flat SSA
+// Core bodies) and lowers it to native Go or Python.
 //
-// This is the "codegen leg" — the analog of Ax's Go compiler emitters. The
-// same IR drives every target; each target's emitter encodes that language's
-// integer/float semantics (Go: native uint64 wraparound; Python: mask to 64
-// bits, struct-based float bitcast) so the output is bit-exact everywhere.
+// The syntax is taken from Ax's AxIR (op core.func / body @entry / core.const /
+// core.call @fn / core.call intrinsic.x / core.if / core.return), extended with
+// the numeric vocabulary AxIR's Core lacks: the u64 type and the intrinsic.bit.*
+// / intrinsic.float.* / intrinsic.cast.* families. Each target's emitter encodes
+// that language's integer/float semantics so the output is bit-exact everywhere.
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 )
 
+// ---------- AST ----------
+
+type expr struct {
+	kind   string // const | copy | call
+	typ    string // const type
+	lit    string // const literal
+	src    string // copy source binding
+	callee string // call target (func name or intrinsic.*)
+	isIntr bool
+	args   []string
+}
+
+type stmt struct {
+	kind string // assign | if | return
+	name string // assign target
+	expr *expr
+	cond string // if condition binding
+	body []stmt // if body
+	ret  string // return binding
+	has  bool   // return has a value
+}
+
 type fn struct {
-	Name   string     `json:"name"`
-	Params [][]string `json:"params"`
-	Ret    string     `json:"ret"`
-	Body   []any      `json:"body"`
+	name   string
+	params [][2]string
+	ret    string
+	body   []stmt
 }
-type module struct {
-	Functions []fn `json:"functions"`
+
+// ---------- tokenizer ----------
+
+func tokenize(src string) []string {
+	var t []string
+	ident := func(ch byte) bool {
+		return ch == '_' || ch == '.' || ch >= '0' && ch <= '9' || ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z'
+	}
+	for i := 0; i < len(src); {
+		ch := src[i]
+		switch {
+		case ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r':
+			i++
+		case ch == '{' || ch == '}' || ch == '(' || ch == ')' || ch == ',' || ch == ':' || ch == '=':
+			t = append(t, string(ch))
+			i++
+		case ch == '"':
+			j := i + 1
+			for j < len(src) && src[j] != '"' {
+				j++
+			}
+			t = append(t, src[i:j+1])
+			i = j + 1
+		case ch == '@' || ch == '%':
+			j := i + 1
+			for j < len(src) && ident(src[j]) {
+				j++
+			}
+			t = append(t, src[i:j])
+			i = j
+		default:
+			if ident(ch) {
+				j := i
+				for j < len(src) && ident(src[j]) {
+					j++
+				}
+				t = append(t, src[i:j])
+				i = j
+			} else {
+				i++
+			}
+		}
+	}
+	return t
 }
+
+// ---------- parser ----------
+
+type parser struct {
+	t []string
+	i int
+}
+
+func (p *parser) peek() string {
+	if p.i < len(p.t) {
+		return p.t[p.i]
+	}
+	return ""
+}
+func (p *parser) next() string { s := p.t[p.i]; p.i++; return s }
+func (p *parser) expect(s string) {
+	if p.next() != s {
+		panic("expected " + s + " near token " + fmt.Sprint(p.i))
+	}
+}
+func trim(s, pre string) string { return strings.TrimPrefix(s, pre) }
+
+func (p *parser) parseModule() []fn {
+	var fns []fn
+	for p.i < len(p.t) {
+		if p.peek() == "op" {
+			fns = append(fns, p.parseOp())
+		} else {
+			p.i++
+		}
+	}
+	return fns
+}
+
+func (p *parser) parseOp() fn {
+	p.expect("op")
+	p.next() // opkind, e.g. core.func
+	f := fn{name: trim(p.next(), "@")}
+	p.expect("{")
+	for p.peek() != "}" {
+		if p.peek() == "body" {
+			f.params, f.body = p.parseBody()
+		} else {
+			p.i++
+		}
+	}
+	p.expect("}")
+	return f
+}
+
+func (p *parser) parseBody() ([][2]string, []stmt) {
+	p.expect("body")
+	p.expect("@entry")
+	p.expect("(")
+	var params [][2]string
+	for p.peek() != ")" {
+		name := trim(p.next(), "%")
+		p.expect(":")
+		typ := p.next()
+		params = append(params, [2]string{name, typ})
+		if p.peek() == "," {
+			p.next()
+		}
+	}
+	p.expect(")")
+	p.expect("{")
+	body := p.parseStmts()
+	p.expect("}")
+	return params, body
+}
+
+func (p *parser) parseStmts() []stmt {
+	var out []stmt
+	for p.peek() != "}" {
+		tok := p.peek()
+		switch {
+		case strings.HasPrefix(tok, "%"):
+			name := trim(p.next(), "%")
+			p.expect("=")
+			out = append(out, stmt{kind: "assign", name: name, expr: p.parseExpr()})
+		case tok == "core.if":
+			p.next()
+			cond := trim(p.next(), "%")
+			p.expect("{")
+			body := p.parseStmts()
+			p.expect("}")
+			out = append(out, stmt{kind: "if", cond: cond, body: body})
+		case tok == "core.return":
+			p.next()
+			s := stmt{kind: "return"}
+			if strings.HasPrefix(p.peek(), "%") {
+				s.ret = trim(p.next(), "%")
+				s.has = true
+			}
+			out = append(out, s)
+		default:
+			p.i++
+		}
+	}
+	return out
+}
+
+func (p *parser) parseExpr() *expr {
+	switch op := p.next(); op {
+	case "core.const":
+		return &expr{kind: "const", typ: p.next(), lit: p.next()}
+	case "core.copy":
+		return &expr{kind: "copy", src: trim(p.next(), "%")}
+	case "core.call":
+		callee := p.next()
+		e := &expr{kind: "call"}
+		if strings.HasPrefix(callee, "@") {
+			e.callee = trim(callee, "@")
+		} else {
+			e.callee, e.isIntr = callee, true
+		}
+		p.expect("(")
+		for p.peek() != ")" {
+			e.args = append(e.args, trim(p.next(), "%"))
+			if p.peek() == "," {
+				p.next()
+			}
+		}
+		p.expect(")")
+		return e
+	default:
+		panic("bad expr op " + op)
+	}
+}
+
+// ---------- typing ----------
 
 var funcRet = map[string]string{}
 
-func arr(x any) []any { return x.([]any) }
-func s(x any) string  { return x.(string) }
-
-func typeOf(env map[string]string, e []any) string {
-	switch e[0].(string) {
-	case "c":
-		return s(e[1])
-	case "v":
-		return env[s(e[1])]
-	case "call":
-		return funcRet[s(e[1])]
-	case "u":
-		switch s(e[1]) {
-		case "revbits", "f64bits", "f2u", "i2u":
-			return "u64"
-		case "u2i":
-			return "i64"
-		case "ceil", "bitsf64", "u2f":
-			return "f64"
-		default: // not, signbit, isnan, isinf, isfinite
-			return "bool"
-		}
-	case "b":
-		switch s(e[1]) {
-		case "eq", "ne", "lt", "le", "gt", "ge", "land", "lor":
-			return "bool"
-		default:
-			return typeOf(env, arr(e[2]))
-		}
-	case "sel":
-		return typeOf(env, arr(e[2]))
+func intrinsicType(name string, args []string, env map[string]string) string {
+	switch name {
+	case "intrinsic.add", "intrinsic.sub", "intrinsic.mul",
+		"intrinsic.bit.and", "intrinsic.bit.or", "intrinsic.bit.xor",
+		"intrinsic.bit.shl", "intrinsic.bit.shr":
+		return env[args[0]]
+	case "intrinsic.bit.reverse64", "intrinsic.float.to_bits",
+		"intrinsic.cast.f64_to_u64", "intrinsic.cast.i64_to_u64":
+		return "u64"
+	case "intrinsic.cast.u64_to_i64":
+		return "i64"
+	case "intrinsic.float.from_bits", "intrinsic.float.ceil", "intrinsic.cast.u64_to_f64":
+		return "f64"
+	default: // signbit, is_nan, is_inf, eq, ne, lt, lte, gt, gte, and, or, not
+		return "bool"
 	}
-	panic("typeOf: " + s(e[0]))
 }
+
+func exprType(env map[string]string, e *expr) string {
+	switch e.kind {
+	case "const":
+		return e.typ
+	case "copy":
+		return env[e.src]
+	case "call":
+		if e.isIntr {
+			return intrinsicType(e.callee, e.args, env)
+		}
+		return funcRet[e.callee]
+	}
+	panic("exprType")
+}
+
+type decl struct{ name, typ string }
+
+// inferFunc builds the type env, the func-scope declaration order (non-params,
+// first-seen), and the return type.
+func inferFunc(f fn) (map[string]string, []decl, string) {
+	env := map[string]string{}
+	isParam := map[string]bool{}
+	for _, p := range f.params {
+		env[p[0]] = p[1]
+		isParam[p[0]] = true
+	}
+	var decls []decl
+	ret := ""
+	var walk func(ss []stmt)
+	walk = func(ss []stmt) {
+		for _, s := range ss {
+			switch s.kind {
+			case "assign":
+				t := exprType(env, s.expr)
+				if _, seen := env[s.name]; !seen {
+					env[s.name] = t
+					if !isParam[s.name] {
+						decls = append(decls, decl{s.name, t})
+					}
+				}
+			case "if":
+				walk(s.body)
+			case "return":
+				if s.has && ret == "" {
+					ret = s.ret
+				}
+			}
+		}
+	}
+	walk(f.body)
+	return env, decls, env[ret]
+}
+
+// ---------- helpers ----------
 
 func camel(name string) string {
 	parts := strings.Split(name, "_")
@@ -82,253 +316,263 @@ func goType(t string) string {
 	}
 }
 
-var goBin = map[string]string{"add": "+", "sub": "-", "mul": "*", "shl": "<<", "shr": ">>",
-	"and": "&", "or": "|", "xor": "^", "eq": "==", "ne": "!=", "lt": "<", "le": "<=",
-	"gt": ">", "ge": ">=", "land": "&&", "lor": "||"}
+// ---------- Go emitter ----------
 
-func goExpr(env map[string]string, e []any) string {
-	switch e[0].(string) {
-	case "c":
-		switch s(e[1]) {
+func riGo(name string, a []string) string {
+	bin := func(sym string) string { return "(" + a[0] + " " + sym + " " + a[1] + ")" }
+	switch name {
+	case "intrinsic.add":
+		return bin("+")
+	case "intrinsic.sub":
+		return bin("-")
+	case "intrinsic.mul":
+		return bin("*")
+	case "intrinsic.bit.and":
+		return bin("&")
+	case "intrinsic.bit.or":
+		return bin("|")
+	case "intrinsic.bit.xor":
+		return bin("^")
+	case "intrinsic.bit.shl":
+		return bin("<<")
+	case "intrinsic.bit.shr":
+		return bin(">>")
+	case "intrinsic.bit.reverse64":
+		return "bits.Reverse64(" + a[0] + ")"
+	case "intrinsic.float.to_bits":
+		return "math.Float64bits(" + a[0] + ")"
+	case "intrinsic.float.from_bits":
+		return "math.Float64frombits(" + a[0] + ")"
+	case "intrinsic.float.ceil":
+		return "math.Ceil(" + a[0] + ")"
+	case "intrinsic.float.signbit":
+		return "math.Signbit(" + a[0] + ")"
+	case "intrinsic.float.is_nan":
+		return "math.IsNaN(" + a[0] + ")"
+	case "intrinsic.float.is_inf":
+		return "math.IsInf(" + a[0] + ", 0)"
+	case "intrinsic.cast.u64_to_f64":
+		return "float64(" + a[0] + ")"
+	case "intrinsic.cast.f64_to_u64":
+		return "uint64(" + a[0] + ")"
+	case "intrinsic.cast.u64_to_i64":
+		return "int64(" + a[0] + ")"
+	case "intrinsic.cast.i64_to_u64":
+		return "uint64(" + a[0] + ")"
+	case "intrinsic.eq":
+		return bin("==")
+	case "intrinsic.ne":
+		return bin("!=")
+	case "intrinsic.lt":
+		return bin("<")
+	case "intrinsic.lte":
+		return bin("<=")
+	case "intrinsic.gt":
+		return bin(">")
+	case "intrinsic.gte":
+		return bin(">=")
+	case "intrinsic.and":
+		return bin("&&")
+	case "intrinsic.or":
+		return bin("||")
+	case "intrinsic.not":
+		return "(!" + a[0] + ")"
+	}
+	panic("riGo " + name)
+}
+
+func exprGo(e *expr) string {
+	switch e.kind {
+	case "const":
+		switch e.typ {
 		case "u64":
-			return "uint64(" + s(e[2]) + ")"
+			return "uint64(" + e.lit + ")"
 		case "i64":
-			return "int64(" + s(e[2]) + ")"
+			return "int64(" + e.lit + ")"
 		case "f64":
-			return "float64(" + s(e[2]) + ")"
+			return "float64(" + e.lit + ")"
 		default:
-			return s(e[2])
+			return e.lit
 		}
-	case "v":
-		return s(e[1])
+	case "copy":
+		return e.src
 	case "call":
-		var a []string
-		for _, x := range arr(e[2]) {
-			a = append(a, goExpr(env, arr(x)))
+		if e.isIntr {
+			return riGo(e.callee, e.args)
 		}
-		return camel(s(e[1])) + "(" + strings.Join(a, ", ") + ")"
-	case "u":
-		x := goExpr(env, arr(e[2]))
-		switch s(e[1]) {
-		case "not":
-			return "(!" + x + ")"
-		case "revbits":
-			return "bits.Reverse64(" + x + ")"
-		case "signbit":
-			return "math.Signbit(" + x + ")"
-		case "isnan":
-			return "math.IsNaN(" + x + ")"
-		case "isinf":
-			return "math.IsInf(" + x + ", 0)"
-		case "isfinite":
-			return "(!math.IsInf(" + x + ", 0) && !math.IsNaN(" + x + "))"
-		case "ceil":
-			return "math.Ceil(" + x + ")"
-		case "f64bits":
-			return "math.Float64bits(" + x + ")"
-		case "bitsf64":
-			return "math.Float64frombits(" + x + ")"
-		case "u2f":
-			return "float64(" + x + ")"
-		case "f2u":
-			return "uint64(" + x + ")"
-		case "u2i":
-			return "int64(" + x + ")"
-		case "i2u":
-			return "uint64(" + x + ")"
-		}
-	case "b":
-		x := goExpr(env, arr(e[2]))
-		y := goExpr(env, arr(e[3]))
-		return "(" + x + " " + goBin[s(e[1])] + " " + y + ")"
-	case "sel":
-		cond := goExpr(env, arr(e[1]))
-		a := goExpr(env, arr(e[2]))
-		d := goExpr(env, arr(e[3]))
-		t := goType(typeOf(env, arr(e[2])))
-		return "(func() " + t + " { if " + cond + " { return " + a + " }; return " + d + " })()"
+		return camel(e.callee) + "(" + strings.Join(e.args, ", ") + ")"
 	}
-	panic("goExpr")
+	panic("exprGo")
 }
 
-var pyBin = map[string]string{"eq": "==", "ne": "!=", "lt": "<", "le": "<=", "gt": ">",
-	"ge": ">=", "land": "and", "lor": "or"}
-
-func pyExpr(env map[string]string, e []any) string {
-	switch e[0].(string) {
-	case "c":
-		switch s(e[1]) {
-		case "f64":
-			return "float(" + s(e[2]) + ")"
-		case "bool":
-			if s(e[2]) == "true" {
-				return "True"
-			}
-			return "False"
-		default:
-			return s(e[2])
-		}
-	case "v":
-		return s(e[1])
-	case "call":
-		var a []string
-		for _, x := range arr(e[2]) {
-			a = append(a, pyExpr(env, arr(x)))
-		}
-		return s(e[1]) + "(" + strings.Join(a, ", ") + ")"
-	case "u":
-		x := pyExpr(env, arr(e[2]))
-		switch s(e[1]) {
-		case "not":
-			return "(not " + x + ")"
-		case "revbits":
-			return "rev64(" + x + ")"
-		case "signbit":
-			return "(math.copysign(1.0, " + x + ") < 0.0)"
-		case "isnan":
-			return "math.isnan(" + x + ")"
-		case "isinf":
-			return "math.isinf(" + x + ")"
-		case "isfinite":
-			return "math.isfinite(" + x + ")"
-		case "ceil":
-			return "float(math.ceil(" + x + "))"
-		case "f64bits":
-			return "f2bits(" + x + ")"
-		case "bitsf64":
-			return "bits2f(" + x + ")"
-		case "u2f":
-			return "float(" + x + ")"
-		case "f2u":
-			return "int(" + x + ")"
-		case "u2i":
-			return "(" + x + ")"
-		case "i2u":
-			return "(" + x + " & MASK)"
-		}
-	case "b":
-		op := s(e[1])
-		x := pyExpr(env, arr(e[2]))
-		y := pyExpr(env, arr(e[3]))
-		u64 := typeOf(env, arr(e[2])) == "u64"
-		switch op {
-		case "add", "sub", "mul", "shl":
-			sym := map[string]string{"add": "+", "sub": "-", "mul": "*", "shl": "<<"}[op]
-			if u64 {
-				return "((" + x + " " + sym + " " + y + ") & MASK)"
-			}
-			return "(" + x + " " + sym + " " + y + ")"
-		case "shr":
-			return "(" + x + " >> " + y + ")"
-		case "and":
-			return "(" + x + " & " + y + ")"
-		case "or":
-			return "(" + x + " | " + y + ")"
-		case "xor":
-			return "(" + x + " ^ " + y + ")"
-		default:
-			return "(" + x + " " + pyBin[op] + " " + y + ")"
-		}
-	case "sel":
-		cond := pyExpr(env, arr(e[1]))
-		a := pyExpr(env, arr(e[2]))
-		d := pyExpr(env, arr(e[3]))
-		return "(" + a + " if " + cond + " else " + d + ")"
-	}
-	panic("pyExpr")
-}
-
-func copyEnv(env map[string]string) map[string]string {
-	n := map[string]string{}
-	for k, v := range env {
-		n[k] = v
-	}
-	return n
-}
-
-// emitBlock lowers a statement slice. Every `if` in this IR has a then-branch
-// that always returns, so we flatten: emit the guarded then-block, then splice
-// the else-branch in front of the remaining statements at the same level.
-func emitBlock(env map[string]string, stmts []any, indent int, target string) []string {
+func goStmts(ss []stmt, indent int, b *strings.Builder) {
 	pad := strings.Repeat("\t", indent)
-	if target == "py" {
-		pad = strings.Repeat("    ", indent)
-	}
-	var out []string
-	expr := goExpr
-	if target == "py" {
-		expr = pyExpr
-	}
-	for k := 0; k < len(stmts); k++ {
-		st := arr(stmts[k])
-		switch st[0].(string) {
-		case "let":
-			name := s(st[1])
-			e := arr(st[2])
-			env[name] = typeOf(env, e)
-			if target == "py" {
-				out = append(out, pad+name+" = "+expr(env, e))
-			} else {
-				out = append(out, pad+name+" := "+expr(env, e))
-			}
-		case "ret":
-			out = append(out, pad+"return "+expr(env, arr(st[1])))
+	for _, s := range ss {
+		switch s.kind {
+		case "assign":
+			b.WriteString(pad + s.name + " = " + exprGo(s.expr) + "\n")
 		case "if":
-			cond := expr(env, arr(st[1]))
-			then := arr(st[2])
-			els := arr(st[3])
-			if target == "py" {
-				out = append(out, pad+"if "+cond+":")
-				out = append(out, emitBlock(copyEnv(env), then, indent+1, target)...)
+			b.WriteString(pad + "if " + s.cond + " {\n")
+			goStmts(s.body, indent+1, b)
+			b.WriteString(pad + "}\n")
+		case "return":
+			if s.has {
+				b.WriteString(pad + "return " + s.ret + "\n")
 			} else {
-				out = append(out, pad+"if "+cond+" {")
-				out = append(out, emitBlock(copyEnv(env), then, indent+1, target)...)
-				out = append(out, pad+"}")
+				b.WriteString(pad + "return\n")
 			}
-			rest := append(append([]any{}, els...), stmts[k+1:]...)
-			out = append(out, emitBlock(env, rest, indent, target)...)
-			return out
 		}
 	}
-	return out
 }
 
-func emitGo(m module) string {
+func emitGo(fns []fn) string {
 	var b strings.Builder
 	b.WriteString("package main\n\nimport (\n\t\"math\"\n\t\"math/bits\"\n)\n")
-	for _, f := range m.Functions {
-		env := map[string]string{}
+	for _, f := range fns {
+		_, decls, ret := inferFunc(f)
 		var ps []string
-		for _, p := range f.Params {
-			env[p[0]] = p[1]
+		for _, p := range f.params {
 			ps = append(ps, p[0]+" "+goType(p[1]))
 		}
-		b.WriteString("\nfunc " + camel(f.Name) + "(" + strings.Join(ps, ", ") + ") " + goType(f.Ret) + " {\n")
-		for _, line := range emitBlock(env, f.Body, 1, "go") {
-			b.WriteString(line + "\n")
+		b.WriteString("\nfunc " + camel(f.name) + "(" + strings.Join(ps, ", ") + ") " + goType(ret) + " {\n")
+		for _, d := range decls {
+			b.WriteString("\tvar " + d.name + " " + goType(d.typ) + "\n")
 		}
+		goStmts(f.body, 1, &b)
 		b.WriteString("}\n")
 	}
 	return b.String()
 }
 
-func emitPy(m module) string {
+// ---------- Python emitter ----------
+
+func riPy(name string, a []string, env map[string]string) string {
+	bin := func(sym string) string { return "(" + a[0] + " " + sym + " " + a[1] + ")" }
+	mask := func(sym string) string {
+		if env[a[0]] == "u64" {
+			return "((" + a[0] + " " + sym + " " + a[1] + ") & MASK)"
+		}
+		return bin(sym)
+	}
+	switch name {
+	case "intrinsic.add":
+		return mask("+")
+	case "intrinsic.sub":
+		return mask("-")
+	case "intrinsic.mul":
+		return mask("*")
+	case "intrinsic.bit.shl":
+		return mask("<<")
+	case "intrinsic.bit.shr":
+		return bin(">>")
+	case "intrinsic.bit.and":
+		return bin("&")
+	case "intrinsic.bit.or":
+		return bin("|")
+	case "intrinsic.bit.xor":
+		return bin("^")
+	case "intrinsic.bit.reverse64":
+		return "rev64(" + a[0] + ")"
+	case "intrinsic.float.to_bits":
+		return "f2bits(" + a[0] + ")"
+	case "intrinsic.float.from_bits":
+		return "bits2f(" + a[0] + ")"
+	case "intrinsic.float.ceil":
+		return "float(math.ceil(" + a[0] + "))"
+	case "intrinsic.float.signbit":
+		return "(math.copysign(1.0, " + a[0] + ") < 0.0)"
+	case "intrinsic.float.is_nan":
+		return "math.isnan(" + a[0] + ")"
+	case "intrinsic.float.is_inf":
+		return "math.isinf(" + a[0] + ")"
+	case "intrinsic.cast.u64_to_f64":
+		return "float(" + a[0] + ")"
+	case "intrinsic.cast.f64_to_u64":
+		return "int(" + a[0] + ")"
+	case "intrinsic.cast.u64_to_i64":
+		return "(" + a[0] + ")"
+	case "intrinsic.cast.i64_to_u64":
+		return "(" + a[0] + " & MASK)"
+	case "intrinsic.eq":
+		return bin("==")
+	case "intrinsic.ne":
+		return bin("!=")
+	case "intrinsic.lt":
+		return bin("<")
+	case "intrinsic.lte":
+		return bin("<=")
+	case "intrinsic.gt":
+		return bin(">")
+	case "intrinsic.gte":
+		return bin(">=")
+	case "intrinsic.and":
+		return "(" + a[0] + " and " + a[1] + ")"
+	case "intrinsic.or":
+		return "(" + a[0] + " or " + a[1] + ")"
+	case "intrinsic.not":
+		return "(not " + a[0] + ")"
+	}
+	panic("riPy " + name)
+}
+
+func exprPy(e *expr, env map[string]string) string {
+	switch e.kind {
+	case "const":
+		switch e.typ {
+		case "f64":
+			return "float(" + e.lit + ")"
+		case "bool":
+			if e.lit == "true" {
+				return "True"
+			}
+			return "False"
+		default:
+			return e.lit
+		}
+	case "copy":
+		return e.src
+	case "call":
+		if e.isIntr {
+			return riPy(e.callee, e.args, env)
+		}
+		return e.callee + "(" + strings.Join(e.args, ", ") + ")"
+	}
+	panic("exprPy")
+}
+
+func pyStmts(ss []stmt, indent int, env map[string]string, b *strings.Builder) {
+	pad := strings.Repeat("    ", indent)
+	for _, s := range ss {
+		switch s.kind {
+		case "assign":
+			b.WriteString(pad + s.name + " = " + exprPy(s.expr, env) + "\n")
+		case "if":
+			b.WriteString(pad + "if " + s.cond + ":\n")
+			pyStmts(s.body, indent+1, env, b)
+		case "return":
+			if s.has {
+				b.WriteString(pad + "return " + s.ret + "\n")
+			} else {
+				b.WriteString(pad + "return\n")
+			}
+		}
+	}
+}
+
+func emitPy(fns []fn) string {
 	var b strings.Builder
 	b.WriteString("import math, struct\nMASK = (1 << 64) - 1\n")
 	b.WriteString("def rev64(x):\n    r = 0\n    for _ in range(64):\n        r = ((r << 1) | (x & 1)) & MASK\n        x >>= 1\n    return r\n")
 	b.WriteString("def f2bits(x): return struct.unpack('<Q', struct.pack('<d', x))[0]\n")
 	b.WriteString("def bits2f(x): return struct.unpack('<d', struct.pack('<Q', x))[0]\n")
-	for _, f := range m.Functions {
-		env := map[string]string{}
+	for _, f := range fns {
+		env, _, _ := inferFunc(f)
 		var ps []string
-		for _, p := range f.Params {
-			env[p[0]] = p[1]
+		for _, p := range f.params {
 			ps = append(ps, p[0])
 		}
-		b.WriteString("\ndef " + f.Name + "(" + strings.Join(ps, ", ") + "):\n")
-		for _, line := range emitBlock(env, f.Body, 1, "py") {
-			b.WriteString(line + "\n")
-		}
+		b.WriteString("\ndef " + f.name + "(" + strings.Join(ps, ", ") + "):\n")
+		pyStmts(f.body, 1, env, &b)
 	}
 	return b.String()
 }
@@ -338,18 +582,17 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	var m module
-	if err := json.Unmarshal(data, &m); err != nil {
-		panic(err)
-	}
-	for _, f := range m.Functions {
-		funcRet[f.Name] = f.Ret
+	p := &parser{t: tokenize(string(data))}
+	fns := p.parseModule()
+	for _, f := range fns {
+		_, _, ret := inferFunc(f)
+		funcRet[f.name] = ret
 	}
 	switch os.Args[2] {
 	case "go":
-		fmt.Print(emitGo(m))
+		fmt.Print(emitGo(fns))
 	case "py":
-		fmt.Print(emitPy(m))
+		fmt.Print(emitPy(fns))
 	default:
 		panic("unknown target " + os.Args[2])
 	}
