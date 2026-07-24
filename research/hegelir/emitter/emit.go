@@ -577,6 +577,146 @@ func emitPy(fns []fn) string {
 	return b.String()
 }
 
+// ---------- Rust emitter ----------
+
+func rustType(t string) string {
+	switch t {
+	case "u64":
+		return "u64"
+	case "i64":
+		return "i64"
+	case "f64":
+		return "f64"
+	default:
+		return "bool"
+	}
+}
+
+func riRust(name string, a []string) string {
+	bin := func(sym string) string { return "(" + a[0] + " " + sym + " " + a[1] + ")" }
+	switch name {
+	case "intrinsic.add":
+		return bin("+")
+	case "intrinsic.sub":
+		return bin("-")
+	case "intrinsic.mul":
+		return bin("*")
+	case "intrinsic.bit.and":
+		return bin("&")
+	case "intrinsic.bit.or":
+		return bin("|")
+	case "intrinsic.bit.xor":
+		return bin("^")
+	case "intrinsic.bit.shl":
+		return bin("<<")
+	case "intrinsic.bit.shr":
+		return bin(">>")
+	case "intrinsic.bit.reverse64":
+		return a[0] + ".reverse_bits()"
+	case "intrinsic.float.to_bits":
+		return a[0] + ".to_bits()"
+	case "intrinsic.float.from_bits":
+		return "f64::from_bits(" + a[0] + ")"
+	case "intrinsic.float.ceil":
+		return a[0] + ".ceil()"
+	case "intrinsic.float.signbit":
+		return a[0] + ".is_sign_negative()"
+	case "intrinsic.float.is_nan":
+		return a[0] + ".is_nan()"
+	case "intrinsic.float.is_inf":
+		return a[0] + ".is_infinite()"
+	case "intrinsic.cast.u64_to_f64":
+		return "(" + a[0] + " as f64)"
+	case "intrinsic.cast.f64_to_u64":
+		return "(" + a[0] + " as u64)"
+	case "intrinsic.cast.u64_to_i64":
+		return "(" + a[0] + " as i64)"
+	case "intrinsic.cast.i64_to_u64":
+		return "(" + a[0] + " as u64)"
+	case "intrinsic.eq":
+		return bin("==")
+	case "intrinsic.ne":
+		return bin("!=")
+	case "intrinsic.lt":
+		return bin("<")
+	case "intrinsic.lte":
+		return bin("<=")
+	case "intrinsic.gt":
+		return bin(">")
+	case "intrinsic.gte":
+		return bin(">=")
+	case "intrinsic.and":
+		return bin("&&")
+	case "intrinsic.or":
+		return bin("||")
+	case "intrinsic.not":
+		return "(!" + a[0] + ")"
+	}
+	panic("riRust " + name)
+}
+
+func exprRust(e *expr) string {
+	switch e.kind {
+	case "const":
+		switch e.typ {
+		case "u64":
+			return e.lit + "u64"
+		case "i64":
+			return e.lit + "i64"
+		case "f64":
+			return e.lit + "f64"
+		default:
+			return e.lit
+		}
+	case "copy":
+		return e.src
+	case "call":
+		if e.isIntr {
+			return riRust(e.callee, e.args)
+		}
+		return e.callee + "(" + strings.Join(e.args, ", ") + ")"
+	}
+	panic("exprRust")
+}
+
+func rustStmts(ss []stmt, indent int, b *strings.Builder) {
+	pad := strings.Repeat("    ", indent)
+	for _, s := range ss {
+		switch s.kind {
+		case "assign":
+			b.WriteString(pad + s.name + " = " + exprRust(s.expr) + ";\n")
+		case "if":
+			b.WriteString(pad + "if " + s.cond + " {\n")
+			rustStmts(s.body, indent+1, b)
+			b.WriteString(pad + "}\n")
+		case "return":
+			if s.has {
+				b.WriteString(pad + "return " + s.ret + ";\n")
+			} else {
+				b.WriteString(pad + "return;\n")
+			}
+		}
+	}
+}
+
+func emitRust(fns []fn) string {
+	var b strings.Builder
+	for _, f := range fns {
+		_, decls, ret := inferFunc(f)
+		var ps []string
+		for _, p := range f.params {
+			ps = append(ps, p[0]+": "+rustType(p[1]))
+		}
+		b.WriteString("\nfn " + f.name + "(" + strings.Join(ps, ", ") + ") -> " + rustType(ret) + " {\n")
+		for _, d := range decls {
+			b.WriteString("    let mut " + d.name + ": " + rustType(d.typ) + ";\n")
+		}
+		rustStmts(f.body, 1, &b)
+		b.WriteString("}\n")
+	}
+	return b.String()
+}
+
 func main() {
 	data, err := os.ReadFile(os.Args[1])
 	if err != nil {
@@ -593,6 +733,8 @@ func main() {
 		fmt.Print(emitGo(fns))
 	case "py":
 		fmt.Print(emitPy(fns))
+	case "rust":
+		fmt.Print(emitRust(fns))
 	default:
 		panic("unknown target " + os.Args[2])
 	}

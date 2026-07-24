@@ -38,7 +38,7 @@ flat-SSA Core bodies where every operand is a `%binding`, `core.const` /
 The deterministic choice→value encoding layer — the part cross-language
 reproducibility actually depends on (the seed/RNG stream is deliberately *not*
 stable even across Rust builds; the reproduce **blob** is what carries
-determinism) — can be reimplemented as native Go and native Python that is
+determinism) — can be reimplemented as native Go, Python, and Rust that is
 **bit-exact** with the Rust engine, driven entirely by one IR.
 
 The component chosen is `core/float_index.rs` (Hypothesis's float lexicographic
@@ -47,7 +47,10 @@ dependency-free, gnarly bit manipulation, and determinism-critical for float
 shrinking.
 
 Latest run: **10,050 golden vectors** (curated edge cases + ~6,000 randomized
-arbitrary bit patterns), **0 mismatches** for both emitted Go and emitted Python.
+arbitrary bit patterns), **0 mismatches** across all three emitted targets — Go,
+Python, and Rust. The Rust target closes the loop: because the reference *is* the
+engine's own Rust, an emitted-Rust match is direct evidence that the IR
+faithfully reproduces the original implementation.
 
 ## Layout
 
@@ -55,13 +58,15 @@ arbitrary bit patterns), **0 mismatches** for both emitted Go and emitted Python
 |------|------|
 | `reference/ref.rs` | Rust reference: the `float_index` functions copied verbatim from `hegel-c/src/native/core/float_index.rs`, plus a golden-vector generator. The source of truth. |
 | `ir/float_index.axir` | **HegelIR**: the functional core expressed in AxIR-style text (adopted from Ax, extended with `u64` + `intrinsic.bit.*`/`float.*`/`cast.*`). The source of truth for codegen. |
-| `emitter/emit.go` | The emitter (à la AxIR's Go compiler): tokenizes + parses the `.axir` module and lowers it to native Go or Python, encoding each language's integer/float semantics. |
+| `emitter/emit.go` | The emitter (à la AxIR's Go compiler): tokenizes + parses the `.axir` module and lowers it to native Go, Python, or Rust, encoding each language's integer/float semantics. |
 | `targets/go/float_index_gen.go` | Generated Go (checked in, like Ax's `packages/<lang>`). Do not edit by hand — re-run `run.sh`. |
 | `targets/python/float_index_gen.py` | Generated Python (checked in). Do not edit by hand. |
+| `targets/rust/float_index_gen.rs` | Generated Rust (checked in). Do not edit by hand. |
 | `conformance/checker.go` | Go conformance checker: runs the vectors through the emitted Go. |
 | `conformance/py_check.py` | Python conformance checker: runs the vectors through the emitted Python. |
+| `conformance/checker.rs` | Rust conformance checker: `include!`s the emitted Rust and runs the vectors through it. |
 | `spike1/floatindex.go` | The earlier milestone: a hand-written Go port (before the emitter existed), used to prove bit-exactness was achievable at all. |
-| `run.sh` | End-to-end: reference → vectors → emit → check both targets. |
+| `run.sh` | End-to-end: reference → vectors → emit → check all three targets. |
 
 ## Run
 
@@ -85,9 +90,10 @@ bit-exact everywhere. The golden-vector gate is what keeps it honest.
 - The IR covers what this one component needs. The full core also needs
   records/structs, collections, the bignum path, and Unicode tables — more IR
   vocabulary, all mechanical.
-- Two targets shown (Go, Python). Rust/Java/C++ are additional emitters.
+- Three targets (Go, Python, Rust). Java/C++ are additional emitters.
 - The emitter is minimal — no standalone type-checker yet (it trusts
-  well-formed IR), and block-flattening assumes `if` then-branches return.
+  well-formed IR), and no identifier-sanitizer (a binding must avoid target
+  keywords; that is why `%false` was renamed for the Rust target).
 - This is the deterministic encoding/replay path only. The effectful shell
   (RNG, on-disk database, panic/exception mapping) stays a thin per-language
   layer — the same split the C ABI already draws.
@@ -95,6 +101,6 @@ bit-exact everywhere. The golden-vector gate is what keeps it honest.
 ## Possible next steps
 
 1. Widen the IR to the blob/base64 codec — the actual cross-language wire format.
-2. Add a third target (Rust or Java) to prove the emitter generalizes.
-3. Give the emitter a real type-checker (study Ax's Go compiler for the shape).
+2. Give the emitter a real type-checker + identifier sanitizer (study Ax's Go compiler for the shape).
+3. Add Java / C++ targets to match Ax's full backend set.
 4. Write up a full design doc (IR spec, core/shell split, conformance-suite plan).

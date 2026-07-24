@@ -119,7 +119,7 @@ func isSimpleFloat(x float64) bool {
 	var nan bool
 	var sb_or_inf bool
 	var bad bool
-	var false bool
+	var ff bool
 	var pow56f float64
 	var ge bool
 	var i uint64
@@ -133,14 +133,14 @@ func isSimpleFloat(x float64) bool {
 	nan = math.IsNaN(x)
 	sb_or_inf = (sb || inf)
 	bad = (sb_or_inf || nan)
-	false = false
+	ff = false
 	if bad {
-		return false
+		return ff
 	}
 	pow56f = float64(72057594037927936)
 	ge = (x >= pow56f)
 	if ge {
-		return false
+		return ff
 	}
 	i = uint64(x)
 	back = float64(i)

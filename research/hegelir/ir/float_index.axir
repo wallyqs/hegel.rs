@@ -94,14 +94,14 @@ module @hegel.float_index version "0.1" {
       %nan = core.call intrinsic.float.is_nan(%x)
       %sb_or_inf = core.call intrinsic.or(%sb, %inf)
       %bad = core.call intrinsic.or(%sb_or_inf, %nan)
-      %false = core.const bool false
+      %ff = core.const bool false
       core.if %bad {
-        core.return %false
+        core.return %ff
       }
       %pow56f = core.const f64 72057594037927936
       %ge = core.call intrinsic.gte(%x, %pow56f)
       core.if %ge {
-        core.return %false
+        core.return %ff
       }
       %i = core.call intrinsic.cast.f64_to_u64(%x)
       %back = core.call intrinsic.cast.u64_to_f64(%i)
