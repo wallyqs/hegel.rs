@@ -1,0 +1,93 @@
+# HegelIR — research spike
+
+A feasibility spike for defining Hegel's deterministic **functional core** in a
+single intermediate representation and compiling it into **native, idiomatic
+code in multiple languages** — instead of shipping one `libhegel` binary that
+every language binds to over the C ABI.
+
+This is exploratory research, not part of the shipped crates.
+
+## Why
+
+Today every language binding links the native `libhegel` engine through the C
+ABI. An alternative — inspired by [Ax](https://github.com/ax-llm/ax), whose
+`AxIR` compiles one semantic model into checked-in native packages for Go,
+Python, Java, C++, and Rust — is to generate a native engine per language from a
+single source of truth. That would give: no per-platform native binary, native
+debuggable code, guaranteed determinism, and one definition instead of N
+hand-synced bindings.
+
+Ax's *architecture* (dialects → a low-level Core → per-language emitters → a
+golden-fixture `verify` gate) is a strong blueprint, and its compiler is written
+in Go. But its Core IR is built for LLM orchestration: its type system is
+`string/bool/int/i64/f64/bytes` with no unsigned/fixed-width integers, and it
+has **no bitwise or float-bits intrinsics**. Hegel's core is fundamentally
+`u64` bit-twiddling and `f64`↔bits reinterpretation, so AxIR cannot express it
+as-is. Hence a small, purpose-built IR here, with Ax as the design reference.
+
+## What the spike proves
+
+The deterministic choice→value encoding layer — the part cross-language
+reproducibility actually depends on (the seed/RNG stream is deliberately *not*
+stable even across Rust builds; the reproduce **blob** is what carries
+determinism) — can be reimplemented as native Go and native Python that is
+**bit-exact** with the Rust engine, driven entirely by one IR.
+
+The component chosen is `core/float_index.rs` (Hypothesis's float lexicographic
+encoding: `float_to_index` / `index_to_float` / `simplest_in_range`) — pure,
+dependency-free, gnarly bit manipulation, and determinism-critical for float
+shrinking.
+
+Latest run: **10,050 golden vectors** (curated edge cases + ~6,000 randomized
+arbitrary bit patterns), **0 mismatches** for both emitted Go and emitted Python.
+
+## Layout
+
+| Path | Role |
+|------|------|
+| `reference/ref.rs` | Rust reference: the `float_index` functions copied verbatim from `hegel-c/src/native/core/float_index.rs`, plus a golden-vector generator. The source of truth. |
+| `ir/build_ir.py` | Authoring helper that emits the IR module as JSON. |
+| `ir/float_index.ir.json` | **HegelIR**: the functional core expressed in a compact IR (types `u64/i64/f64/bool`; arithmetic, bit ops, float↔bits, casts; functions, `let`, `if`, `call`, recursion). |
+| `emitter/emit.go` | The emitter (à la AxIR's Go compiler): lowers one IR module to native Go or Python, encoding each language's integer/float semantics. |
+| `targets/go/float_index_gen.go` | Generated Go (checked in, like Ax's `packages/<lang>`). Do not edit by hand — re-run `run.sh`. |
+| `targets/python/float_index_gen.py` | Generated Python (checked in). Do not edit by hand. |
+| `conformance/checker.go` | Go conformance checker: runs the vectors through the emitted Go. |
+| `conformance/py_check.py` | Python conformance checker: runs the vectors through the emitted Python. |
+| `spike1/floatindex.go` | The earlier milestone: a hand-written Go port (before the emitter existed), used to prove bit-exactness was achievable at all. |
+| `run.sh` | End-to-end: reference → vectors → emit → check both targets. |
+
+## Run
+
+```bash
+research/hegelir/run.sh
+```
+
+Needs `rustc`, `go`, and `python3` on PATH.
+
+## The key cross-language hazard (handled once, in the emitter)
+
+Languages disagree on the primitives this code is built from. Example: an
+out-of-range `float64`→`uint64` cast is *saturating* in Rust (`1e300 as u64 ==
+u64::MAX`) but *implementation-defined* in Go (`uint64(1e300) == 2^63`). The
+emitter encodes each language's rules — e.g. Python masks every `u64` op with
+`& MASK` and uses `struct` for the float bitcast — so the single IR stays
+bit-exact everywhere. The golden-vector gate is what keeps it honest.
+
+## Scope / limits
+
+- The IR covers what this one component needs. The full core also needs
+  records/structs, collections, the bignum path, and Unicode tables — more IR
+  vocabulary, all mechanical.
+- Two targets shown (Go, Python). Rust/Java/C++ are additional emitters.
+- The emitter is minimal — no standalone type-checker yet (it trusts
+  well-formed IR), and block-flattening assumes `if` then-branches return.
+- This is the deterministic encoding/replay path only. The effectful shell
+  (RNG, on-disk database, panic/exception mapping) stays a thin per-language
+  layer — the same split the C ABI already draws.
+
+## Possible next steps
+
+1. Widen the IR to the blob/base64 codec — the actual cross-language wire format.
+2. Add a third target (Rust or Java) to prove the emitter generalizes.
+3. Give the emitter a real type-checker (study Ax's Go compiler for the shape).
+4. Write up a full design doc (IR spec, core/shell split, conformance-suite plan).

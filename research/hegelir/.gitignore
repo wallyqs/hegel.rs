@@ -1,0 +1,4 @@
+# Local build artifacts (run.sh builds in a temp dir; these guard manual runs).
+ref
+*.o
+vectors.tsv
