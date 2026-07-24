@@ -587,6 +587,23 @@
         against. In short, "libhegel" is the distributable native form of the engine.
       </p>
 
+      <h3>Why a C ABI at all?</h3>
+      <p>
+        The Rust frontend does not strictly <em>need</em> C: the engine is an ordinary Rust crate compiled
+        into the same binary, and it even exposes a native Rust entry point
+        (<code class="inl">run_native_async</code> in <code class="inl">hegel-c/src/embed.rs</code>). The C ABI
+        exists because Hegel is a <strong>universal</strong> property-based testing framework — one engine
+        meant to back frontends in many languages — and C is the common denominator of foreign-function
+        interfaces.
+      </p>
+      <ul class="clean">
+        <li><strong>Universal interop.</strong> Almost every language can call C — Go via cgo, Java via JNI/Panama, Python via ctypes/cffi, Ruby via FFI, Node via N-API — but none can call another language's native ABI. A C ABI lets all of them drive the identical engine.</li>
+        <li><strong>A stable contract.</strong> Rust has no stable ABI; its calling convention and struct layout can shift between compiler versions, so Rust functions can't be exposed reliably across a precompiled boundary. <code class="inl">repr(C)</code> + <code class="inl">extern "C"</code> pin a fixed contract — what makes the shipped <code class="inl">libhegel-&lt;os&gt;-&lt;arch&gt;</code> binaries linkable from any toolchain.</li>
+        <li><strong>One engine, identical behavior.</strong> The generation and shrinking logic is subtle; reimplementing it per language would drift. A single native library keeps every binding's results identical and leaves one engine to maintain.</li>
+        <li><strong>Designed for foreign callers.</strong> The protocol's shape reflects this: the explicit <code class="inl">HegelContext</code> error channel — instead of thread-local state — exists precisely because runtimes like Go migrate tasks between OS threads and languages like Java free handles from finalizer threads.</li>
+        <li><strong>Rust dogfoods the same path.</strong> Rather than bypass C through the native entry point, the frontend drives the very same <code class="inl">hegel_*</code> ABI every other binding uses — so the boundary is exercised continuously and Rust behaves exactly like every other language.</li>
+      </ul>
+
       <h3>The build pipeline</h3>
       <p>
         A natural question: is Rust the source of truth, and is it "compiled to C"? The first half is yes;
