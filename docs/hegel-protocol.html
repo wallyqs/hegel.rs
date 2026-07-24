@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hegel for Rust — Goal &amp; Protocol Reference</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f3f4f7;
+    --surface: #ffffff;
+    --surface-2: #eef0f4;
+    --ink: #14171c;
+    --ink-soft: #2c313a;
+    --muted: #565e6b;
+    --faint: #828b99;
+    --line: #e1e4ea;
+    --line-strong: #d0d5dd;
+    --accent: #0c6a70;
+    --accent-ink: #0a565b;
+    --accent-wash: rgba(12, 106, 112, 0.09);
+    --ok: #2e7d52;
+    --warn: #9a6b12;
+    --danger: #c0453b;
+    --neutral: #6b7280;
+    --shadow: 0 1px 2px rgba(20, 23, 28, 0.04), 0 8px 24px rgba(20, 23, 28, 0.05);
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", "Menlo", "Cascadia Code", "Consolas", monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0e12;
+      --surface: #14171d;
+      --surface-2: #1a1e26;
+      --ink: #e7eaef;
+      --ink-soft: #ccd2db;
+      --muted: #98a2b0;
+      --faint: #6d7683;
+      --line: #262b34;
+      --line-strong: #333a45;
+      --accent: #46b8be;
+      --accent-ink: #6fcbd0;
+      --accent-wash: rgba(70, 184, 190, 0.12);
+      --ok: #57b982;
+      --warn: #d3a24a;
+      --danger: #e5766c;
+      --neutral: #8b95a3;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f3f4f7; --surface: #ffffff; --surface-2: #eef0f4; --ink: #14171c;
+    --ink-soft: #2c313a; --muted: #565e6b; --faint: #828b99; --line: #e1e4ea;
+    --line-strong: #d0d5dd; --accent: #0c6a70; --accent-ink: #0a565b;
+    --accent-wash: rgba(12, 106, 112, 0.09); --ok: #2e7d52; --warn: #9a6b12;
+    --danger: #c0453b; --neutral: #6b7280;
+    --shadow: 0 1px 2px rgba(20, 23, 28, 0.04), 0 8px 24px rgba(20, 23, 28, 0.05);
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0c0e12; --surface: #14171d; --surface-2: #1a1e26; --ink: #e7eaef;
+    --ink-soft: #ccd2db; --muted: #98a2b0; --faint: #6d7683; --line: #262b34;
+    --line-strong: #333a45; --accent: #46b8be; --accent-ink: #6fcbd0;
+    --accent-wash: rgba(70, 184, 190, 0.12); --ok: #57b982; --warn: #d3a24a;
+    --danger: #e5766c; --neutral: #8b95a3;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 1.5rem; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: var(--accent-ink); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  code, pre, .mono { font-family: var(--mono); }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(120% 140% at 88% -10%, var(--accent-wash), transparent 60%),
+      var(--surface);
+  }
+  .hero-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: clamp(2.6rem, 6vw, 4.6rem) clamp(1.25rem, 4vw, 3rem) clamp(2.2rem, 4vw, 3rem);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 1.7rem; height: 1px; background: var(--accent);
+    display: inline-block;
+  }
+  h1 {
+    font-size: clamp(2.1rem, 5.2vw, 3.4rem);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+    font-weight: 680;
+  }
+  h1 .thin { color: var(--muted); font-weight: 400; }
+  .lede {
+    font-size: clamp(1.05rem, 2.2vw, 1.28rem);
+    color: var(--muted);
+    max-width: 62ch;
+    margin: 0 0 1.9rem;
+    text-wrap: pretty;
+  }
+  .meta-row {
+    display: flex; flex-wrap: wrap; gap: 0.55rem;
+    font-family: var(--mono); font-size: 0.78rem;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.32rem 0.7rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    color: var(--muted);
+    background: var(--surface);
+  }
+  .chip b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Layout ---------- */
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 clamp(1.25rem, 4vw, 3rem);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  @media (min-width: 960px) {
+    .shell { grid-template-columns: 232px minmax(0, 1fr); gap: clamp(2rem, 4vw, 4rem); }
+  }
+
+  nav.toc {
+    align-self: start;
+    padding: 2.4rem 0;
+  }
+  @media (min-width: 960px) {
+    nav.toc { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; }
+  }
+  nav.toc .toc-title {
+    font-family: var(--mono);
+    font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faint); margin: 0 0 0.85rem;
+  }
+  nav.toc ol { list-style: none; margin: 0 0 1.4rem; padding: 0; counter-reset: toc; }
+  nav.toc li { margin: 0; }
+  nav.toc a {
+    display: flex; gap: 0.6rem; align-items: baseline;
+    padding: 0.28rem 0;
+    color: var(--muted);
+    font-size: 0.88rem;
+    border-left: 2px solid transparent;
+    padding-left: 0.7rem;
+    margin-left: -0.7rem;
+  }
+  nav.toc a:hover { color: var(--ink); text-decoration: none; }
+  nav.toc a .num {
+    font-family: var(--mono); font-size: 0.72rem; color: var(--faint);
+    min-width: 1.1rem;
+  }
+
+  main { padding: 2.4rem 0 5rem; min-width: 0; }
+
+  section { padding-top: 1.4rem; margin-bottom: 3rem; }
+  section > h2 {
+    font-size: clamp(1.35rem, 3vw, 1.75rem);
+    letter-spacing: -0.01em;
+    margin: 0 0 0.4rem;
+    font-weight: 660;
+    text-wrap: balance;
+  }
+  .sec-eyebrow {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent-ink); margin: 0 0 0.55rem;
+  }
+  section h3 {
+    font-size: 1.08rem; margin: 2rem 0 0.5rem; font-weight: 640; letter-spacing: -0.005em;
+  }
+  p { margin: 0 0 1rem; max-width: 68ch; color: var(--ink-soft); }
+  p.muted { color: var(--muted); }
+  strong { color: var(--ink); font-weight: 620; }
+  ul.clean { max-width: 68ch; padding-left: 1.1rem; margin: 0 0 1rem; }
+  ul.clean li { margin: 0.3rem 0; color: var(--ink-soft); }
+
+  .divider { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+  code.inl {
+    font-size: 0.86em;
+    background: var(--surface-2);
+    padding: 0.12em 0.4em;
+    border-radius: 4px;
+    color: var(--accent-ink);
+    border: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  p code.inl, li code.inl { white-space: normal; }
+
+  /* ---------- Cards / callouts ---------- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: clamp(1.1rem, 2.4vw, 1.6rem);
+    box-shadow: var(--shadow);
+  }
+  .callout {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    background: var(--accent-wash);
+    border-radius: 8px;
+    padding: 1rem 1.15rem;
+    margin: 1.4rem 0;
+  }
+  .callout p { margin: 0; color: var(--ink-soft); }
+  .callout .tag {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--accent-ink); display: block; margin-bottom: 0.35rem;
+  }
+
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    margin: 1rem 0;
+    color: var(--ink-soft);
+  }
+  pre .c { color: var(--faint); }         /* comment */
+  pre .k { color: var(--accent-ink); }    /* keyword/type */
+  pre .fn { color: var(--ink); font-weight: 600; }
+  pre .s { color: var(--ok); }            /* string */
+
+  /* ---------- Architecture diagram ---------- */
+  .arch {
+    display: grid;
+    gap: 0.9rem;
+    grid-template-columns: 1fr;
+    margin: 1.4rem 0;
+  }
+  @media (min-width: 620px) { .arch { grid-template-columns: 1fr auto 1fr; align-items: stretch; } }
+  .arch-box {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 11px;
+    padding: 1.05rem 1.15rem; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 0.35rem;
+  }
+  .arch-box.engine { border-color: var(--accent); background: linear-gradient(180deg, var(--accent-wash), var(--surface)); }
+  .arch-box .label { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-ink); }
+  .arch-box .name { font-weight: 640; font-size: 1.02rem; }
+  .arch-box .sub { font-size: 0.84rem; color: var(--muted); }
+  .arch-link {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.3rem; color: var(--muted); font-family: var(--mono); font-size: 0.68rem;
+    letter-spacing: 0.08em; text-transform: uppercase; padding: 0.4rem;
+  }
+  .arch-link .bar { font-size: 1.3rem; color: var(--accent); line-height: 1; }
+  @media (max-width: 619px) { .arch-link .bar { transform: rotate(90deg); } }
+
+  /* ---------- Lifecycle stepper ---------- */
+  .steps { list-style: none; counter-reset: step; padding: 0; margin: 1.4rem 0; }
+  .steps > li {
+    position: relative;
+    padding: 0 0 1.5rem 3rem;
+    border-left: 2px solid var(--line);
+    margin-left: 1rem;
+  }
+  .steps > li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .steps > li::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute; left: -1rem; top: -0.15rem;
+    width: 2rem; height: 2rem; border-radius: 50%;
+    background: var(--surface); border: 2px solid var(--accent); color: var(--accent-ink);
+    font-family: var(--mono); font-size: 0.82rem; font-weight: 600;
+    display: grid; place-items: center;
+  }
+  .steps h4 { margin: 0 0 0.25rem; font-size: 0.98rem; font-weight: 620; }
+  .steps p { margin: 0; font-size: 0.9rem; color: var(--muted); max-width: 60ch; }
+  .steps code.inl { font-size: 0.82em; }
+
+  /* ---------- Tables ---------- */
+  .table-wrap { overflow-x: auto; margin: 1.2rem 0; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.87rem; min-width: 520px; }
+  th, td { text-align: left; padding: 0.62rem 0.85rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    background: var(--surface-2); font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; position: sticky; top: 0;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.mono, th.mono { font-family: var(--mono); font-size: 0.82rem; white-space: nowrap; color: var(--ink); }
+  td .val { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--faint); }
+
+  .pill {
+    display: inline-block; font-family: var(--mono); font-size: 0.68rem; font-weight: 600;
+    padding: 0.15rem 0.5rem; border-radius: 999px; letter-spacing: 0.02em; white-space: nowrap;
+  }
+  .pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  .pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+  .pill.danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 15%, transparent); }
+  .pill.neutral { color: var(--neutral); background: color-mix(in srgb, var(--neutral) 16%, transparent); }
+  .pill.accent { color: var(--accent-ink); background: var(--accent-wash); }
+
+  /* ---------- Function reference ---------- */
+  .fn-group { margin: 1.5rem 0 2.2rem; }
+  .fn-group > .grp-head {
+    display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap;
+    padding-bottom: 0.5rem; border-bottom: 1px solid var(--line); margin-bottom: 0.4rem;
+  }
+  .fn-group > .grp-head .letter {
+    font-family: var(--mono); font-size: 0.78rem; color: var(--surface);
+    background: var(--accent); width: 1.5rem; height: 1.5rem; border-radius: 6px;
+    display: grid; place-items: center; font-weight: 700;
+  }
+  .fn-group > .grp-head h3 { margin: 0; font-size: 1.02rem; }
+  .fn-group > .grp-head .hint { color: var(--muted); font-size: 0.86rem; }
+  .fn {
+    padding: 0.9rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .fn:last-child { border-bottom: 0; }
+  .fn .sig {
+    display: block; font-family: var(--mono); font-size: 0.8rem; line-height: 1.5;
+    color: var(--ink); overflow-x: auto; white-space: pre; padding-bottom: 0.15rem;
+  }
+  .fn .sig .nm { color: var(--accent-ink); font-weight: 600; }
+  .fn .sig .rt { color: var(--muted); }
+  .fn .desc { margin: 0.35rem 0 0; font-size: 0.9rem; color: var(--muted); max-width: 74ch; }
+  .fn .desc code { font-family: var(--mono); font-size: 0.86em; color: var(--accent-ink); }
+
+  footer {
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+    padding: 2.2rem clamp(1.25rem, 4vw, 3rem);
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  footer .foot-inner { max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 0.6rem 1.4rem; justify-content: space-between; }
+  footer code { font-family: var(--mono); color: var(--ink-soft); }
+
+  .theme-toggle {
+    position: fixed; top: 1rem; right: 1rem; z-index: 20;
+    background: var(--surface); border: 1px solid var(--line-strong); color: var(--muted);
+    border-radius: 999px; padding: 0.4rem 0.85rem; font-size: 0.76rem; cursor: pointer;
+    font-family: var(--mono); box-shadow: var(--shadow); letter-spacing: 0.04em;
+  }
+  .theme-toggle:hover { color: var(--ink); }
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" aria-label="Toggle color theme">◐ theme</button>
+
+<header class="hero">
+  <div class="hero-inner">
+    <p class="eyebrow">Library goal &amp; protocol reference</p>
+    <h1>Hegel for Rust <span class="thin">&amp; the Hegel&nbsp;protocol</span></h1>
+    <p class="lede">
+      Hegel is a property-based testing library for Rust. It finds the inputs that break your
+      code and shrinks them to the smallest failing example. This report documents what the
+      library is for, and the exact protocol its frontend speaks to its native testing engine.
+    </p>
+    <div class="meta-row">
+      <span class="chip"><b>hegeltest</b> v0.28.2</span>
+      <span class="chip">based on <b>Hypothesis</b></span>
+      <span class="chip">protocol: <b>libhegel C&nbsp;ABI</b></span>
+      <span class="chip">transport: <b>in-process</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="toc" aria-label="Table of contents">
+    <p class="toc-title">Contents</p>
+    <ol>
+      <li><a href="#goal"><span class="num">01</span><span>What Hegel is for</span></a></li>
+      <li><a href="#architecture"><span class="num">02</span><span>Architecture &amp; the "server"</span></a></li>
+      <li><a href="#conventions"><span class="num">03</span><span>Protocol conventions</span></a></li>
+      <li><a href="#lifecycle"><span class="num">04</span><span>The run lifecycle</span></a></li>
+      <li><a href="#status"><span class="num">05</span><span>Result &amp; status codes</span></a></li>
+      <li><a href="#config"><span class="num">06</span><span>Configuration enums</span></a></li>
+      <li><a href="#reference"><span class="num">07</span><span>Function reference</span></a></li>
+      <li><a href="#wrappers"><span class="num">08</span><span>The Rust safe layer</span></a></li>
+    </ol>
+    <p class="toc-title">Source of truth</p>
+    <p style="font-size:0.8rem;color:var(--muted);margin:0;line-height:1.5;">
+      <code class="inl">hegel-c/include/hegel.h</code>
+    </p>
+  </nav>
+
+  <main>
+    <!-- 01 -->
+    <section id="goal">
+      <p class="sec-eyebrow">01 — Purpose</p>
+      <h2>What Hegel is for</h2>
+      <p>
+        Most tests are <em>example-based</em>: you pick a handful of inputs and assert the output for
+        each. Property-based testing inverts that. You state a <strong>property</strong> that should hold
+        for <em>every</em> input, and the framework generates many inputs trying to prove you wrong.
+        When it finds a counterexample, it <strong>shrinks</strong> it — repeatedly simplifying the input
+        while the failure persists — until it hands you the smallest example that still breaks.
+      </p>
+      <p>
+        Hegel is a Rust implementation of that idea, based on Python's
+        <a href="https://github.com/hypothesisworks/hypothesis">Hypothesis</a>. You write a test with the
+        <code class="inl">#[hegel::test]</code> attribute, draw values from generators, and assert your
+        property. Hegel runs the body many times (100 by default) and minimizes any failure it finds.
+      </p>
+
+      <pre><span class="c">// A property: sorting should never change the length of a vector.</span>
+<span class="k">use</span> hegel::generators <span class="k">as</span> gs;
+<span class="k">use</span> hegel::TestCase;
+
+#[hegel::test]
+<span class="k">fn</span> <span class="fn">sort_preserves_length</span>(tc: TestCase) {
+    <span class="k">let</span> xs = tc.draw(gs::vecs(gs::integers::&lt;i32&gt;()));
+    <span class="k">let</span> n = xs.len();
+    <span class="k">let</span> <span class="k">mut</span> sorted = xs.clone();
+    sorted.sort();
+    assert_eq!(sorted.len(), n);
+}</pre>
+
+      <p>
+        The canonical example in the project's README tests a hand-written <code class="inl">my_sort</code>
+        that accidentally de-duplicates. Hegel doesn't just report <em>a</em> failing input — it reports the
+        <em>minimal</em> one, <code class="inl">[0, 0]</code>: the smallest input that distinguishes "sort"
+        from "sort and remove duplicates". That minimization is the feature that makes the failures
+        actionable.
+      </p>
+
+      <h3>What the library gives you</h3>
+      <ul class="clean">
+        <li><strong>Generators</strong> — primitives (<code class="inl">integers</code>, <code class="inl">floats</code>, <code class="inl">text</code>, <code class="inl">booleans</code>) and combinators (<code class="inl">vecs</code>, <code class="inl">tuples</code>, <code class="inl">one_of</code>, <code class="inl">map</code>/<code class="inl">filter</code>/<code class="inl">flat_map</code>), plus structured draws for dates, UUIDs, IP addresses, emails, URLs, and regex-matching strings.</li>
+        <li><strong>Automatic shrinking</strong> — every failure is reduced to a minimal counterexample.</li>
+        <li><strong>A reproduction database</strong> — failing examples are persisted under <code class="inl">.hegel/</code> and replayed first on the next run, so a fixed bug stays fixed.</li>
+        <li><strong>Stateful testing</strong> — model-based, rule-driven testing via <code class="inl">#[hegel::state_machine]</code> and variable pools.</li>
+        <li><strong>Targeting</strong> — hill-climbing toward user-recorded scores to steer generation toward interesting inputs.</li>
+      </ul>
+    </section>
+
+    <hr class="divider">
+
+    <!-- 02 -->
+    <section id="architecture">
+      <p class="sec-eyebrow">02 — Architecture</p>
+      <h2>Architecture, and what the "server" really is</h2>
+      <p>
+        Hegel is split into a <strong>frontend</strong> and an <strong>engine</strong>. The frontend is the
+        friendly Rust API you write tests against. The engine — a port of Hypothesis's <em>conjecture</em>
+        core — owns the hard part: deciding what to generate, replaying the database, running the
+        targeting search, and shrinking counterexamples.
+      </p>
+
+      <div class="callout">
+        <span class="tag">On the word "server"</span>
+        <p>
+          There is <strong>no network server and no separate process</strong>. The engine is compiled as a
+          native library, <code class="inl">libhegel</code>, and linked into the same binary as your tests.
+          Everything runs <strong>in-process</strong>. The "server" you talk to is that engine, and the
+          "protocol" is the <strong>C ABI</strong> it exposes — the set of <code class="inl">hegel_*</code>
+          functions below. Every language binding (Rust, and others) drives the exact same C ABI. So this
+          document treats that C ABI as the protocol.
+        </p>
+      </div>
+
+      <div class="arch">
+        <div class="arch-box">
+          <span class="label">Frontend / client</span>
+          <span class="name">hegeltest</span>
+          <span class="sub">The <code class="inl">hegel</code> crate: <code class="inl">#[hegel::test]</code>, generators, the <code class="inl">TestCase</code> API, output formatting. A thin C-ABI shim lives in <code class="inl">src/ffi.rs</code>.</span>
+        </div>
+        <div class="arch-link">
+          <span class="bar">⟷</span>
+          <span>hegel_* C ABI</span>
+        </div>
+        <div class="arch-box engine">
+          <span class="label">Engine / "server"</span>
+          <span class="name">libhegel</span>
+          <span class="sub">The <code class="inl">hegel-c</code> crate: choice sequences, generation, targeting, the shrinker, the failure database, and blob encoding.</span>
+        </div>
+      </div>
+
+      <p class="muted">
+        There is no background thread. A run handle is a <em>suspended engine</em> — a future the client
+        resumes on its own thread every time it asks for the next test case. All generation, mutation,
+        and shrinking happen inside those calls.
+      </p>
+    </section>
+
+    <hr class="divider">
+
+    <!-- 03 -->
+    <section id="conventions">
+      <p class="sec-eyebrow">03 — Calling convention</p>
+      <h2>Protocol conventions</h2>
+      <p>Every function in the protocol follows the same shape, so the rules below hold everywhere.</p>
+
+      <h3>The universal call shape</h3>
+      <ul class="clean">
+        <li>Every function takes a <code class="inl">hegel_context_t *ctx</code> as its <strong>first</strong> argument and returns a <code class="inl">hegel_result_t</code> code. The two exceptions are <code class="inl">hegel_context_new</code> (returns the context) and <code class="inl">hegel_context_last_error</code> (returns the message pointer).</li>
+        <li>Anything else a call produces — a handle, a string, a count, a drawn value — is written through a trailing <strong>out-parameter</strong> named <code class="inl">out_*</code>.</li>
+        <li><code class="inl">HEGEL_OK</code> is <code class="inl">0</code>; every error is <strong>negative</strong>, so <code class="inl">result &lt; 0</code> tests for failure.</li>
+        <li>A <code class="inl">NULL</code> context is allowed and simply opts out of error messages — the call still returns its code.</li>
+      </ul>
+
+      <h3>The context is the error channel</h3>
+      <p>
+        Diagnostics are recorded on the caller-supplied <code class="inl">hegel_context_t</code>, not in
+        thread-local state. This is deliberate: runtimes that migrate a task between OS threads mid-call
+        (Go's goroutines, for example) would otherwise write an error on one thread and read it on another.
+        You create one context per test (or per thread), pass it everywhere, and read the last message with
+        <code class="inl">hegel_context_last_error()</code>. A context must not be shared across threads
+        concurrently.
+      </p>
+
+      <h3>Pointer ownership</h3>
+      <p>
+        Pointers you pass <em>into</em> a function are always yours — the library copies whatever it needs
+        to keep, so you may free or reuse them as soon as the call returns. Of the pointers handed
+        <em>back</em>, a specific set are owned by you and must be released with a matching free; every
+        other returned string is borrowed and valid only until a documented point.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>You receive from…</th><th>…release with</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">hegel_context_new</td><td class="mono">hegel_context_free</td></tr>
+            <tr><td class="mono">hegel_settings_new</td><td class="mono">hegel_settings_free</td></tr>
+            <tr><td class="mono">hegel_run_start</td><td class="mono">hegel_run_free</td></tr>
+            <tr><td class="mono">hegel_next_test_case · _from_blob · _clone</td><td class="mono">hegel_test_case_free</td></tr>
+            <tr><td class="mono">hegel_run_result</td><td class="mono">hegel_run_result_free</td></tr>
+            <tr><td class="mono">hegel_run_result_failure</td><td class="mono">hegel_failure_free</td></tr>
+            <tr><td class="mono">hegel_string_generator_*</td><td class="mono">hegel_string_generator_free</td></tr>
+            <tr><td class="mono">hegel_generate_bytes</td><td class="mono">hegel_generate_bytes_result_free</td></tr>
+            <tr><td class="mono">hegel_generate_string</td><td class="mono">hegel_generate_string_result_free</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Threading &amp; the test-case family</h3>
+      <p>
+        A single test-case handle must be driven by at most one thread at a time; concurrent use of one
+        handle surfaces as <code class="inl">HEGEL_E_CONCURRENT_USE</code>. To generate from several threads,
+        <code class="inl">hegel_test_case_clone</code> the handle — a clone draws from an
+        <strong>independent choice stream</strong> but shares the underlying case's outcome and budgets. A
+        handle and all its clones form a <strong>family</strong>; the shared case is released only when the
+        last handle is freed. Completion is <strong>first-caller-wins and family-wide</strong>: the first
+        <code class="inl">hegel_mark_complete</code> anywhere in the family records the outcome, and later
+        calls on other handles are safe no-ops.
+      </p>
+    </section>
+
+    <hr class="divider">
+
+    <!-- 04 -->
+    <section id="lifecycle">
+      <p class="sec-eyebrow">04 — Sequence</p>
+      <h2>The run lifecycle</h2>
+      <p>A full property-test run (mode <code class="inl">HEGEL_MODE_TEST_RUN</code>) walks these steps.</p>
+      <ol class="steps">
+        <li>
+          <h4>Create a context</h4>
+          <p><code class="inl">hegel_context_new()</code> — the per-thread error channel passed to every later call.</p>
+        </li>
+        <li>
+          <h4>Build &amp; configure settings</h4>
+          <p><code class="inl">hegel_settings_new</code>, then any <code class="inl">hegel_settings_set_*</code> setters (test-case count, phases, seed, database, verbosity…).</p>
+        </li>
+        <li>
+          <h4>Start the run</h4>
+          <p><code class="inl">hegel_run_start</code> snapshots the settings and returns a run handle. No test case exists yet; an optional callback redirects the engine's per-line output.</p>
+        </li>
+        <li>
+          <h4>Pull the next test case</h4>
+          <p><code class="inl">hegel_next_test_case</code> resumes the engine on your thread until it offers a case — or writes <code class="inl">NULL</code> to signal the run is finished.</p>
+        </li>
+        <li>
+          <h4>Drive the case</h4>
+          <p>Call the <code class="inl">hegel_generate_*</code> draws, open/close spans, use collections, pools, state machines, and record <code class="inl">hegel_target</code> scores. Clone the handle for concurrent draws.</p>
+        </li>
+        <li>
+          <h4>Complete &amp; free the case</h4>
+          <p><code class="inl">hegel_mark_complete</code> with <code class="inl">VALID</code>, <code class="inl">INVALID</code>, <code class="inl">OVERRUN</code>, or <code class="inl">INTERESTING</code>; then <code class="inl">hegel_test_case_free</code>. Loop back to step 4.</p>
+        </li>
+        <li>
+          <h4>Read the aggregate result</h4>
+          <p>Once the loop ends, <code class="inl">hegel_run_result</code> gives a snapshot: <code class="inl">hegel_run_result_status</code> plus each failure's origin and reproduction blob (or a run-level error message).</p>
+        </li>
+        <li>
+          <h4>Final replay (optional)</h4>
+          <p><code class="inl">hegel_test_case_from_blob</code> rebuilds the minimal counterexample from its base64 blob so the client can regenerate the diagnostic and re-raise its own failure.</p>
+        </li>
+        <li>
+          <h4>Tear down</h4>
+          <p>Free the result, run, settings, and context. Result and failure snapshots are independent and may outlive the run.</p>
+        </li>
+      </ol>
+    </section>
+
+    <hr class="divider">
+
+    <!-- 05 -->
+    <section id="status">
+      <p class="sec-eyebrow">05 — Status codes</p>
+      <h2>Result &amp; status codes</h2>
+
+      <h3><code class="inl">hegel_result_t</code> — per-call return code</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="mono">Variant</th><th>Value</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">HEGEL_OK</td><td><span class="pill ok">0</span></td><td>Success.</td></tr>
+            <tr><td class="mono">HEGEL_E_STOP_TEST</td><td><span class="val">-1</span></td><td>Choice budget exhausted for this case; abort the body. Treat like a validly-completed case.</td></tr>
+            <tr><td class="mono">HEGEL_E_ASSUME</td><td><span class="val">-2</span></td><td>An <code class="inl">assume</code>/<code class="inl">reject</code> precondition failed; discard the case as invalid.</td></tr>
+            <tr><td class="mono">HEGEL_E_BACKEND</td><td><span class="val">-3</span></td><td>The engine reported an error; read <code class="inl">hegel_context_last_error()</code>.</td></tr>
+            <tr><td class="mono">HEGEL_E_INVALID_HANDLE</td><td><span class="val">-4</span></td><td>A required handle pointer was <code class="inl">NULL</code>.</td></tr>
+            <tr><td class="mono">HEGEL_E_INVALID_ARG</td><td><span class="val">-5</span></td><td>A non-handle argument was invalid — NULL, inverted bounds, non-UTF-8, etc.</td></tr>
+            <tr><td class="mono">HEGEL_E_ALREADY_COMPLETE</td><td><span class="val">-6</span></td><td>A primitive or <code class="inl">mark_complete</code> was called on an already-completed handle.</td></tr>
+            <tr><td class="mono">HEGEL_E_NOT_COMPLETE</td><td><span class="val">-7</span></td><td>Read before ready — next case requested before completing the previous, or result read before the run finished.</td></tr>
+            <tr><td class="mono">HEGEL_E_INTERNAL</td><td><span class="val">-8</span></td><td>An internal invariant failed inside libhegel (file a bug).</td></tr>
+            <tr><td class="mono">HEGEL_E_CONCURRENT_USE</td><td><span class="val">-9</span></td><td>One handle used from two threads at once; clone the handle for concurrency.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3><code class="inl">hegel_status_t</code> — outcome of one test case</h3>
+      <p class="muted">Passed to <code class="inl">hegel_mark_complete</code> to conclude a case.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="mono">Status</th><th>Value</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="mono"><span class="pill ok">VALID</span></td><td class="val">0</td><td>The body ran to completion and the property held.</td></tr>
+            <tr><td class="mono"><span class="pill warn">INVALID</span></td><td class="val">1</td><td>A precondition rejected the draw; discard without counting against the budget.</td></tr>
+            <tr><td class="mono"><span class="pill neutral">OVERRUN</span></td><td class="val">2</td><td>Ran out of choice budget mid-case (a draw returned <code class="inl">STOP_TEST</code>); inconclusive.</td></tr>
+            <tr><td class="mono"><span class="pill danger">INTERESTING</span></td><td class="val">3</td><td>The property failed; a candidate counterexample. Pass a stable <em>origin</em> so the shrinker can group the bug.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <span class="tag">Origin strings are load-bearing</span>
+        <p>
+          For an <code class="inl">INTERESTING</code> case, <code class="inl">origin</code> identifies
+          <em>which bug</em> this is. Identical origins are grouped and shrunk together; distinct origins
+          partition the shrink budget. Derive it from the failing assertion's <strong>location</strong>
+          (the convention is <code class="inl">"Panic at &lt;file&gt;:&lt;line&gt;"</code>), never from a
+          message that depends on the drawn values — otherwise every distinct draw looks like a fresh bug
+          and the shrinker never converges.
+        </p>
+      </div>
+
+      <h3><code class="inl">hegel_run_status_t</code> — aggregate run outcome</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="mono">Status</th><th>Value</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="mono"><span class="pill ok">PASSED</span></td><td class="val">0</td><td>The property held across every generated case.</td></tr>
+            <tr><td class="mono"><span class="pill danger">FAILED</span></td><td class="val">1</td><td>The property failed; inspect counterexamples via the failure getters.</td></tr>
+            <tr><td class="mono"><span class="pill warn">ERROR</span></td><td class="val">2</td><td>The run itself failed — a health check, nondeterminism, an engine panic — and produced no verdict.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- 06 -->
+    <section id="config">
+      <p class="sec-eyebrow">06 — Configuration</p>
+      <h2>Configuration enums</h2>
+      <p class="muted">
+        These are passed to the setters as <code class="inl">uint32_t</code> so an out-of-range value is a
+        reportable error instead of undefined behavior.
+      </p>
+
+      <h3>Mode, backend, verbosity</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Enum</th><th class="mono">Variant · value</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td rowspan="2"><code class="inl">hegel_mode_t</code></td><td class="mono">TEST_RUN · 0</td><td>Full generate / shrink / replay loop (default).</td></tr>
+            <tr><td class="mono">SINGLE_TEST_CASE · 1</td><td>Produce exactly one case, no shrinking.</td></tr>
+            <tr><td rowspan="3"><code class="inl">hegel_backend_t</code></td><td class="mono">AUTO · 0</td><td>Choose automatically (default).</td></tr>
+            <tr><td class="mono">DEFAULT · 1</td><td>Seeded PRNG; runs reproducible from the seed.</td></tr>
+            <tr><td class="mono">URANDOM · 2</td><td>Fresh entropy per draw; intended for Antithesis.</td></tr>
+            <tr><td rowspan="4"><code class="inl">hegel_verbosity_t</code></td><td class="mono">QUIET · 0</td><td>Only the final result.</td></tr>
+            <tr><td class="mono">NORMAL · 1</td><td>A short summary line per run (default).</td></tr>
+            <tr><td class="mono">VERBOSE · 2</td><td>Per-case progress and drawn values.</td></tr>
+            <tr><td class="mono">DEBUG · 3</td><td>Verbose, plus shrinker trace output.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Phases <span class="pill accent">bit flags</span></h3>
+      <p class="muted"><code class="inl">hegel_settings_set_phases</code> takes a bitwise OR; omitted phases are disabled. Default is <code class="inl">ALL</code>.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="mono">Phase</th><th>Bit</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">EXPLICIT</td><td class="val">1&nbsp;&laquo;&nbsp;0</td><td>Run hard-coded explicit examples (reserved for future use).</td></tr>
+            <tr><td class="mono">REUSE</td><td class="val">1&nbsp;&laquo;&nbsp;1</td><td>Replay counterexamples persisted from previous runs.</td></tr>
+            <tr><td class="mono">GENERATE</td><td class="val">1&nbsp;&laquo;&nbsp;2</td><td>Randomly generate fresh cases up to the budget.</td></tr>
+            <tr><td class="mono">TARGET</td><td class="val">1&nbsp;&laquo;&nbsp;3</td><td>Hill-climb toward observed <code class="inl">hegel_target</code> scores.</td></tr>
+            <tr><td class="mono">SHRINK</td><td class="val">1&nbsp;&laquo;&nbsp;4</td><td>Shrink failing examples toward minimal counterexamples.</td></tr>
+            <tr><td class="mono">ALL</td><td class="val">31</td><td>All five phases (default).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Health checks <span class="pill accent">bit flags</span></h3>
+      <p class="muted"><code class="inl">hegel_settings_set_suppress_health_check</code> takes a bitwise OR naming the checks to <em>disable</em>. Default is "all enabled".</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="mono">Check</th><th>Bit</th><th>Fires when…</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">FILTER_TOO_MUCH</td><td class="val">1&nbsp;&laquo;&nbsp;0</td><td>Too many draws are rejected via <code class="inl">assume</code> (default: 200 in a row).</td></tr>
+            <tr><td class="mono">TOO_SLOW</td><td class="val">1&nbsp;&laquo;&nbsp;1</td><td>Individual cases are so slow the run is impractical.</td></tr>
+            <tr><td class="mono">TEST_CASES_TOO_LARGE</td><td class="val">1&nbsp;&laquo;&nbsp;2</td><td>Generated values are too large to retain for shrinking.</td></tr>
+            <tr><td class="mono">LARGE_INITIAL_TEST_CASE</td><td class="val">1&nbsp;&laquo;&nbsp;3</td><td>The very first case is already disproportionately large.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Span labels</h3>
+      <p>
+        <code class="inl">hegel_start_span</code> tags a group of draws so the shrinker can pick appropriate
+        moves — shortening a list versus simplifying one element. The label type is
+        <code class="inl">uint64_t</code> and the space is <strong>open</strong>: the well-known values below
+        are conveniences, but any stable <code class="inl">u64</code> works as an opaque grouping key.
+        Structural labels <code class="inl">1</code>–<code class="inl">15</code> are the ones clients set;
+        <code class="inl">16</code>–<code class="inl">30</code> are emitted internally by the engine around
+        each primitive draw.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Structural (client-set)</th><th>Per-draw (engine-internal)</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono" style="white-space:normal;">LIST 1 · LIST_ELEMENT 2 · SET 3 · SET_ELEMENT 4 · MAP 5 · MAP_ENTRY 6 · TUPLE 7 · ONE_OF 8 · OPTIONAL 9 · FIXED_DICT 10 · FLAT_MAP 11 · FILTER 12 · MAPPED 13 · SAMPLED_FROM 14 · ENUM_VARIANT 15</td>
+              <td class="mono" style="white-space:normal;">FEATURE_FLAG 16 · REGEX 17 · EMAIL 18 · URL 19 · DOMAIN 20 · DATE 21 · TIME 22 · DATETIME 23 · UUID 24 · IP_ADDRESS 25 · INTEGER 26 · FLOAT 27 · BOOLEAN 28 · BYTES 29 · STRING 30</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- 07 -->
+    <section id="reference">
+      <p class="sec-eyebrow">07 — API surface</p>
+      <h2>Function reference</h2>
+      <p class="muted">
+        Every function returns <code class="inl">hegel_result_t</code> and takes <code class="inl">ctx</code>
+        first (except the two noted). Signatures are shown with the leading <code class="inl">ctx</code>
+        elided for readability where it is purely mechanical.
+      </p>
+
+      <!-- A -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">A</span><h3>Context</h3><span class="hint">the error channel</span></div>
+        <div class="fn">
+          <code class="sig"><span class="rt">hegel_context_t *</span><span class="nm">hegel_context_new</span>(void)</code>
+          <p class="desc">Allocate a context (never NULL). One per test or per thread; pair with <code>hegel_context_free</code>.</p>
+        </div>
+        <div class="fn">
+          <code class="sig"><span class="nm">hegel_context_free</span>(hegel_context_t *ctx)</code>
+          <p class="desc">Free a context. NULL-safe.</p>
+        </div>
+        <div class="fn">
+          <code class="sig"><span class="rt">const char *</span><span class="nm">hegel_context_last_error</span>(const hegel_context_t *ctx)</code>
+          <p class="desc">The most recent message recorded on <code>ctx</code>, borrowed and invalidated by the next call on the same context. NULL only when <code>ctx</code> is NULL.</p>
+        </div>
+      </div>
+
+      <!-- B -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">B</span><h3>Settings</h3><span class="hint">reusable across runs</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_new</span>(ctx, hegel_settings_t **out_settings)</code><p class="desc">Allocate defaults: 100 cases, all phases, NORMAL verbosity, no seed, disk database under <code>.hegel/</code>. Under CI the database is disabled and derandomize is on.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_free</span>(ctx, hegel_settings_t *s)</code><p class="desc">Free a settings handle. NULL-safe.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_mode</span>(ctx, s, uint32_t mode)</code><p class="desc">Full run loop vs. a single test case.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_backend</span>(ctx, s, uint32_t backend)</code><p class="desc">Select the randomness backend. Pinning an explicit backend is one-way.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_test_cases</span>(ctx, s, uint64_t n)</code><p class="desc">Maximum number of <em>valid</em> cases before declaring the property held (default 100).</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_verbosity</span>(ctx, s, uint32_t v)</code><p class="desc">Engine output level.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_seed</span>(ctx, s, uint64_t seed, bool has_seed)</code><p class="desc">Fix the RNG seed; <code>has_seed = false</code> picks a fresh seed at run start.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_derandomize</span>(ctx, s, bool derandomize)</code><p class="desc">Derive the seed from a stable hash of the database key — deterministic per test, still varied across tests.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_report_multiple_failures</span>(ctx, s, bool yes)</code><p class="desc">Keep generating after the first failure to surface additional <em>distinct</em> bugs (default true).</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_database</span>(ctx, s, const char *database)</code><p class="desc">Example-database root. <code>NULL</code> leaves it, <code>""</code> disables it, otherwise a directory path (created lazily).</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_database_key</span>(ctx, s, const char *key)</code><p class="desc">Scope stored/replayed examples for this run. <code>NULL</code> clears it.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_phases</span>(ctx, s, uint32_t phases)</code><p class="desc">Enable a bitmask of phases; omitted phases are disabled.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_settings_set_suppress_health_check</span>(ctx, s, uint32_t checks)</code><p class="desc">Disable a bitmask of health checks. Each call replaces the whole set.</p></div>
+      </div>
+
+      <!-- C -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">C</span><h3>Run lifecycle</h3><span class="hint">one thread at a time</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_run_start</span>(ctx, const hegel_settings_t *settings, hegel_output_callback_t callback, void *user_data, hegel_run_t **out_run)</code><p class="desc">Build a run (no case generated yet); snapshots the settings. The callback receives each line of engine output; NULL leaves output on stderr.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_next_test_case</span>(ctx, hegel_run_t *run, hegel_test_case_t **out_test_case)</code><p class="desc">Resume the engine on this thread until the next case; writes a caller-owned handle, or <strong>NULL when the run is finished</strong>. All generation and shrinking happen inside this call.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_run_result</span>(ctx, hegel_run_t *run, hegel_run_result_t **out_result)</code><p class="desc">A caller-owned snapshot of the aggregate result. Returns <code>NOT_COMPLETE</code> if the run has not finished.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_run_result_free</span>(ctx, hegel_run_result_t *r)</code><p class="desc">Release a result snapshot and its strings. NULL-safe.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_run_free</span>(ctx, hegel_run_t *run)</code><p class="desc">Free a run handle. Any in-flight case is marked complete and the rest of the exploration is dropped.</p></div>
+      </div>
+
+      <!-- D -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">D</span><h3>Test-case handles</h3><span class="hint">the "family"</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_test_case_from_blob</span>(ctx, const hegel_settings_t *s, const char *blob, hegel_output_callback_t callback, void *user_data, hegel_test_case_t **out_test_case)</code><p class="desc">Build a standalone (run-less) case that replays a base64 failure blob — how the <em>final replay</em> of a counterexample is performed. A stale blob surfaces as <code>STOP_TEST</code> from the overrunning draw.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_test_case_free</span>(ctx, hegel_test_case_t *tc)</code><p class="desc">Release any handle (NULL-safe, exactly once). Freeing is <strong>not</strong> completing — a run-owned case still needs <code>mark_complete</code> before the run can advance.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_test_case_clone</span>(ctx, const hegel_test_case_t *tc, hegel_test_case_t **out_test_case)</code><p class="desc">A new handle on an <strong>independent choice stream</strong> of the same case; shares outcome and budgets, drives concurrently and deterministically. Fails with <code>ALREADY_COMPLETE</code> once the family has completed.</p></div>
+      </div>
+
+      <!-- E -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">E</span><h3>Draw primitives</h3><span class="hint">the values a test consumes</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_generate_boolean</span>(ctx, tc, double p, bool forced, bool has_forced, bool *out_value)</code><p class="desc">A boolean true with probability <code>p ∈ [0,1]</code>. <code>has_forced</code> records a forced choice without consuming entropy.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_generate_integer</span>(ctx, tc, int64_t min_value, int64_t max_value, int64_t *out_value)</code><p class="desc">An integer in the inclusive range; biases toward boundaries, shrinks toward zero.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_generate_integer_big</span>(ctx, tc, const uint8_t *min, size_t min_len, const uint8_t *max, size_t max_len, uint8_t *out, size_t out_cap, size_t *out_len)</code><p class="desc">Arbitrary-precision integer. Bounds and result are two's-complement <strong>little-endian</strong> signed byte buffers; the result is sign-filled to <code>out_cap</code>.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_generate_float</span>(ctx, tc, uint32_t width, double min, double max, bool allow_nan, bool allow_infinity, bool exclude_min, bool exclude_max, double smallest_nonzero_magnitude, double *out_value)</code><p class="desc">A float of width 32 or 64 in an inclusive range. <code>±INFINITY</code> mark unbounded ends; flags gate NaN, infinities, and exclusive bounds.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_generate_bytes</span>(ctx, tc, uint64_t min_size, uint64_t max_size, hegel_generate_bytes_result_t *out_result)</code><p class="desc">A byte string of length in range, in a caller-owned buffer (free with <code>hegel_generate_bytes_result_free</code>).</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_generate_string</span>(ctx, tc, const hegel_string_generator_t *generator, hegel_generate_string_result_t *out_result)</code><p class="desc">A string described by a string generator (below). The UTF-8 buffer is <strong>not</strong> NUL-terminated — always use its <code>len</code>. May return <code>ASSUME</code> for a self-rejecting draw.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_generate_date</span> · <span class="nm">_time</span> · <span class="nm">_datetime</span>(ctx, tc, min, max, out_value)</code><p class="desc">Structured calendar draws. Date shrinks toward 2000-01-01, time toward the value closest to midnight, datetime toward 2000-01-01T00:00:00 clamped into range.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_generate_uuid</span>(ctx, tc, uint8_t version, bool has_version, uint8_t *out_bytes)</code><p class="desc">16 big-endian bytes. <code>has_version</code> forces the RFC 4122 version nibble and variant; the nil UUID is never produced.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_generate_ipv4</span> · <span class="nm">_ipv6</span>(ctx, tc, uint8_t *out_bytes)</code><p class="desc">4 or 16 network-order bytes; half uniform, half biased into IANA special-purpose ranges.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_generate_bytes_result_free</span> · <span class="nm">_string_result_free</span>(ctx, result)</code><p class="desc">Release the buffer a bytes/string draw filled and reset the struct to <code>{NULL, 0}</code>. NULL-safe.</p></div>
+      </div>
+
+      <!-- F -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">F</span><h3>String generators</h3><span class="hint">specs for hegel_generate_string</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_string_generator_text</span>(ctx, min_size, max_size, codec, min_codepoint, max_codepoint, categories[], …, include_characters, …, exclude_characters, …, out_generator)</code><p class="desc">Length plus an alphabet: a codec range (<code>ascii</code> / <code>latin-1</code> / <code>utf-8</code>) intersected with a codepoint range, refined by Unicode category and explicit character include/exclude lists.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_string_generator_regex</span>(ctx, const char *pattern, bool fullmatch, const hegel_string_generator_t *alphabet, out_generator)</code><p class="desc">Strings matching a Python-<code>re</code> pattern. <code>fullmatch</code> toggles whole-string match; an optional text-generator <code>alphabet</code> constrains padding and wildcards.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_string_generator_email</span> · <span class="nm">_url</span> · <span class="nm">_domain</span>(ctx, [max_length,] out_generator)</code><p class="desc">RFC 5321/5322 email addresses, RFC 3986 http/https URLs, and RFC 1035 fully-qualified domain names.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_string_generator_free</span>(ctx, hegel_string_generator_t *generator)</code><p class="desc">Release a generator. Immutable after construction and shareable across threads; validated eagerly at build time.</p></div>
+      </div>
+
+      <!-- G -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">G</span><h3>Spans</h3><span class="hint">structural grouping for the shrinker</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_start_span</span>(ctx, tc, uint64_t label)</code><p class="desc">Open a labeled span around a group of draws so the shrinker treats them as a unit.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_stop_span</span>(ctx, tc, bool discard)</code><p class="desc">Close the most-recent span. <code>discard = true</code> rejects it — e.g. a <code>filter</code> predicate failed and the engine should retry from before the span.</p></div>
+      </div>
+
+      <!-- H -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">H</span><h3>Collections</h3><span class="hint">engine-sized sequences</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_new_collection</span>(ctx, tc, uint64_t min_size, uint64_t max_size, int64_t *out_collection_id)</code><p class="desc">Start an engine-sized collection (<code>max_size = UINT64_MAX</code> for unbounded); returns an opaque id.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_collection_more</span>(ctx, tc, int64_t collection_id, bool *out_more)</code><p class="desc">Ask whether the engine wants another element. Loop, drawing one element each time <code>out_more</code> is true.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_collection_reject</span>(ctx, tc, int64_t collection_id, const char *why)</code><p class="desc">Reject the last element (e.g. a duplicate in a set) so the engine tries another. <code>why</code> is optional.</p></div>
+      </div>
+
+      <!-- I -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">I</span><h3>Stateful testing</h3><span class="hint">pools &amp; state machines</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_new_pool</span>(ctx, tc, int64_t *out_pool_id)</code><p class="desc">Create an engine-managed variable pool (backs <code>stateful::Pool</code>); the caller keeps its own id→value map.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_pool_add</span>(ctx, tc, int64_t pool_id, int64_t *out_variable_id)</code><p class="desc">Register a new variable and get its id.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_pool_generate</span>(ctx, tc, int64_t pool_id, bool consume, int64_t *out_variable_id)</code><p class="desc">Draw (and shrink) a previously-added variable id. <code>consume</code> removes it. Returns <code>ASSUME</code> when the pool is empty.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_new_state_machine</span>(ctx, tc, const char *const *rule_names, size_t num_rules, const char *const *invariant_names, size_t num_invariants, int64_t *out_state_machine_id)</code><p class="desc">Register named rules and invariants. The engine owns rule selection, including swarm testing (each case enables a random subset of rules).</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_state_machine_next_rule</span>(ctx, tc, int64_t state_machine_id, int64_t *out_rule_index)</code><p class="desc">Draw the next rule index in <code>[0, num_rules)</code>. Writes <code>HEGEL_STATE_MACHINE_DONE (-1)</code> when the step budget is exhausted.</p></div>
+      </div>
+
+      <!-- J -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">J</span><h3>Targeting</h3><span class="hint">steer generation</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_target</span>(ctx, tc, double value, const char *label)</code><p class="desc">Record a numeric observation under <code>label</code> for the <code>TARGET</code> phase to hill-climb toward (higher is more interesting). Each label may be recorded once per case.</p></div>
+      </div>
+
+      <!-- K -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">K</span><h3>Completion</h3><span class="hint">conclude a case</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_mark_complete</span>(ctx, tc, uint32_t status, const char *origin)</code><p class="desc">Conclude a case with a <code>hegel_status_t</code>. <code>origin</code> is used only for <code>INTERESTING</code> and identifies which bug this is. First-caller-wins and family-wide; never returns <code>CONCURRENT_USE</code> (it waits).</p></div>
+      </div>
+
+      <!-- L -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">L</span><h3>Results &amp; failures</h3><span class="hint">read the verdict</span></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_run_result_status</span>(ctx, const hegel_run_result_t *r, hegel_run_status_t *out_status)</code><p class="desc">Passed, failed, or errored.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_run_result_error</span>(ctx, r, const char **out_error)</code><p class="desc">The run-level error message for an <code>ERROR</code> run, or NULL. Owned by the snapshot until it is freed.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_run_result_failure_count</span>(ctx, r, size_t *out_count)</code><p class="desc">The number of <em>distinct</em> failures (by origin).</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_run_result_failure</span>(ctx, r, size_t index, hegel_failure_t **out_failure)</code><p class="desc">A caller-owned snapshot of the i-th failure, independent of the run.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_failure_free</span>(ctx, hegel_failure_t *f)</code><p class="desc">Release a failure snapshot and its strings. NULL-safe.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_failure_origin</span>(ctx, const hegel_failure_t *f, const char **out_origin)</code><p class="desc">The origin string the shrinker grouped this bug on.</p></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_failure_reproduction_blob</span>(ctx, f, const char **out_blob)</code><p class="desc">A base64 string encoding the minimal counterexample's choice sequence, for replay via <code>hegel_test_case_from_blob</code> (or NULL).</p></div>
+      </div>
+
+      <!-- M -->
+      <div class="fn-group">
+        <div class="grp-head"><span class="letter">M</span><h3>Version</h3></div>
+        <div class="fn"><code class="sig"><span class="nm">hegel_version</span>(ctx, const char **out_version)</code><p class="desc">libhegel's version, matching the parent <code>hegeltest</code> crate. The pointer is static.</p></div>
+      </div>
+    </section>
+
+    <hr class="divider">
+
+    <!-- 08 -->
+    <section id="wrappers">
+      <p class="sec-eyebrow">08 — Rust binding</p>
+      <h2>The Rust safe layer</h2>
+      <p>
+        The frontend never touches the raw <code class="inl">hegel_*</code> functions directly. A single
+        module, <code class="inl">src/ffi.rs</code>, is the only <code class="inl">unsafe</code> boundary; it
+        wraps the protocol into safe, drop-freeing Rust types that the rest of the library uses. The context
+        lives in a <code class="inl">thread_local!</code> so every fallible call and its error read happen on
+        the same thread.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="mono">Safe type</th><th>Wraps</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">SettingsHandle</td><td class="mono">hegel_settings_t</td><td>Maps each frontend <code class="inl">Settings</code> field through the matching setter and builds the handle.</td></tr>
+            <tr><td class="mono">RunHandle</td><td class="mono">hegel_run_t</td><td>Starts the run, wires an output sink through an <code class="inl">extern "C"</code> trampoline, and yields test cases.</td></tr>
+            <tr><td class="mono">CTestCase</td><td class="mono">hegel_test_case_t</td><td>One handle; wraps every draw, span, collection, pool, state-machine, target, and completion call.</td></tr>
+            <tr><td class="mono">StringGenerator</td><td class="mono">hegel_string_generator_t</td><td>Builds and validates a text/regex/email/url/domain spec eagerly.</td></tr>
+            <tr><td class="mono">RunResult / Failure</td><td class="mono">hegel_run_result_t / _failure_t</td><td>Reads the aggregate status and copies each failure's reproduction blob out.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted">
+        Each wrapper frees its underlying handle on <code class="inl">Drop</code>, so the ownership rules
+        from section 03 are enforced by Rust's type system rather than by hand.
+      </p>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="foot-inner">
+    <span>Generated from <code>hegel-c/include/hegel.h</code>, <code>README.md</code>, <code>src/lib.rs</code>, and <code>src/ffi.rs</code>.</span>
+    <span>Hegel for Rust · <code>hegeltest</code> v0.28.2 · protocol reference</span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById('themeToggle');
+    var root = document.documentElement;
+    btn.addEventListener('click', function () {
+      var current = root.getAttribute('data-theme');
+      if (!current) {
+        current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      root.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark');
+    });
+  })();
+</script>
+</body>
+</html>
