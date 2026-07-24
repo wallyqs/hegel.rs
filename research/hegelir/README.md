@@ -7,6 +7,10 @@ every language binds to over the C ABI.
 
 This is exploratory research, not part of the shipped crates.
 
+> **Continuing this work?** See [`HANDOFF.md`](HANDOFF.md) for the mental model,
+> how the emitter is structured, the prioritized roadmap, and the cross-language
+> gotchas.
+
 ## Why
 
 Today every language binding links the native `libhegel` engine through the C
