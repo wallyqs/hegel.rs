@@ -77,13 +77,13 @@ def is_simple_float(x):
     nan = math.isnan(x)
     sb_or_inf = (sb or inf)
     bad = (sb_or_inf or nan)
-    ff = False
+    false_ = False
     if bad:
-        return ff
+        return false_
     pow56f = float(72057594037927936)
     ge = (x >= pow56f)
     if ge:
-        return ff
+        return false_
     i = int(x)
     back = float(i)
     eqv = (back == x)

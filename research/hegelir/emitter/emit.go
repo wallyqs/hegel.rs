@@ -717,6 +717,175 @@ func emitRust(fns []fn) string {
 	return b.String()
 }
 
+// ---------- identifier sanitizer ----------
+
+// Union of Go / Python / Rust keywords and predeclared identifiers. A binding
+// or function whose name lands here is renamed uniformly across every target so
+// the same IR name maps to a legal identifier in each language.
+var reserved = func() map[string]bool {
+	words := strings.Fields(`
+		break case chan const continue default defer else fallthrough for func go
+		goto if import interface map package range return select struct switch type var
+		true false nil iota len cap make new append copy delete close panic recover
+		print println string bool byte rune int uint uintptr float32 float64 any
+		None True False and as assert async await class def del elif except finally
+		from global in is lambda nonlocal not or pass raise try while with yield match
+		crate dyn enum extern fn impl let loop mod move mut pub ref self Self static
+		super trait unsafe use where abstract become box do final macro override priv
+		typeof unsized virtual str usize isize`)
+	m := map[string]bool{}
+	for _, w := range words {
+		m[w] = true
+	}
+	return m
+}()
+
+func sn(name string) string {
+	if reserved[name] {
+		return name + "_"
+	}
+	return name
+}
+
+func sanitizeExpr(e *expr) {
+	switch e.kind {
+	case "copy":
+		e.src = sn(e.src)
+	case "call":
+		if !e.isIntr {
+			e.callee = sn(e.callee)
+		}
+		for i := range e.args {
+			e.args[i] = sn(e.args[i])
+		}
+	}
+}
+
+func sanitizeStmts(ss []stmt) {
+	for i := range ss {
+		s := &ss[i]
+		switch s.kind {
+		case "assign":
+			s.name = sn(s.name)
+			sanitizeExpr(s.expr)
+		case "if":
+			s.cond = sn(s.cond)
+			sanitizeStmts(s.body)
+		case "return":
+			if s.has {
+				s.ret = sn(s.ret)
+			}
+		}
+	}
+}
+
+func sanitizeAST(fns []fn) {
+	for i := range fns {
+		fns[i].name = sn(fns[i].name)
+		for j := range fns[i].params {
+			fns[i].params[j][0] = sn(fns[i].params[j][0])
+		}
+		sanitizeStmts(fns[i].body)
+	}
+}
+
+// ---------- validator ----------
+
+var validType = map[string]bool{"u64": true, "i64": true, "f64": true, "bool": true}
+
+var intrinsicArity = map[string]int{
+	"intrinsic.not": 1, "intrinsic.bit.reverse64": 1,
+	"intrinsic.float.to_bits": 1, "intrinsic.float.from_bits": 1, "intrinsic.float.ceil": 1,
+	"intrinsic.float.signbit": 1, "intrinsic.float.is_nan": 1, "intrinsic.float.is_inf": 1,
+	"intrinsic.cast.u64_to_f64": 1, "intrinsic.cast.f64_to_u64": 1,
+	"intrinsic.cast.u64_to_i64": 1, "intrinsic.cast.i64_to_u64": 1,
+	"intrinsic.add": 2, "intrinsic.sub": 2, "intrinsic.mul": 2,
+	"intrinsic.bit.and": 2, "intrinsic.bit.or": 2, "intrinsic.bit.xor": 2,
+	"intrinsic.bit.shl": 2, "intrinsic.bit.shr": 2,
+	"intrinsic.eq": 2, "intrinsic.ne": 2, "intrinsic.lt": 2, "intrinsic.lte": 2,
+	"intrinsic.gt": 2, "intrinsic.gte": 2, "intrinsic.and": 2, "intrinsic.or": 2,
+}
+
+func validate(fns []fn) {
+	arity := map[string]int{}
+	for _, f := range fns {
+		arity[f.name] = len(f.params)
+	}
+	var errs []string
+	for _, f := range fns {
+		defined := map[string]bool{}
+		for _, p := range f.params {
+			defined[p[0]] = true
+		}
+		var collect func(ss []stmt)
+		collect = func(ss []stmt) {
+			for _, s := range ss {
+				switch s.kind {
+				case "assign":
+					defined[s.name] = true
+				case "if":
+					collect(s.body)
+				}
+			}
+		}
+		collect(f.body)
+		use := func(name string) {
+			if !defined[name] {
+				errs = append(errs, f.name+": undefined binding %"+name)
+			}
+		}
+		var chkE func(e *expr)
+		chkE = func(e *expr) {
+			switch e.kind {
+			case "const":
+				if !validType[e.typ] {
+					errs = append(errs, f.name+": bad const type "+e.typ)
+				}
+			case "copy":
+				use(e.src)
+			case "call":
+				for _, a := range e.args {
+					use(a)
+				}
+				if e.isIntr {
+					if ar, ok := intrinsicArity[e.callee]; !ok {
+						errs = append(errs, f.name+": unknown intrinsic "+e.callee)
+					} else if ar != len(e.args) {
+						errs = append(errs, fmt.Sprintf("%s: %s expects %d args, got %d", f.name, e.callee, ar, len(e.args)))
+					}
+				} else if n, ok := arity[e.callee]; !ok {
+					errs = append(errs, f.name+": call to unknown function @"+e.callee)
+				} else if n != len(e.args) {
+					errs = append(errs, fmt.Sprintf("%s: @%s expects %d args, got %d", f.name, e.callee, n, len(e.args)))
+				}
+			}
+		}
+		var chkS func(ss []stmt)
+		chkS = func(ss []stmt) {
+			for _, s := range ss {
+				switch s.kind {
+				case "assign":
+					chkE(s.expr)
+				case "if":
+					use(s.cond)
+					chkS(s.body)
+				case "return":
+					if s.has {
+						use(s.ret)
+					}
+				}
+			}
+		}
+		chkS(f.body)
+	}
+	if len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintln(os.Stderr, "IR error: "+e)
+		}
+		os.Exit(1)
+	}
+}
+
 func main() {
 	data, err := os.ReadFile(os.Args[1])
 	if err != nil {
@@ -724,6 +893,8 @@ func main() {
 	}
 	p := &parser{t: tokenize(string(data))}
 	fns := p.parseModule()
+	sanitizeAST(fns)
+	validate(fns)
 	for _, f := range fns {
 		_, _, ret := inferFunc(f)
 		funcRet[f.name] = ret

@@ -58,7 +58,7 @@ faithfully reproduces the original implementation.
 |------|------|
 | `reference/ref.rs` | Rust reference: the `float_index` functions copied verbatim from `hegel-c/src/native/core/float_index.rs`, plus a golden-vector generator. The source of truth. |
 | `ir/float_index.axir` | **HegelIR**: the functional core expressed in AxIR-style text (adopted from Ax, extended with `u64` + `intrinsic.bit.*`/`float.*`/`cast.*`). The source of truth for codegen. |
-| `emitter/emit.go` | The emitter (à la AxIR's Go compiler): tokenizes + parses the `.axir` module and lowers it to native Go, Python, or Rust, encoding each language's integer/float semantics. |
+| `emitter/emit.go` | The emitter (à la AxIR's Go compiler): tokenizes + parses the `.axir` module, validates it, sanitizes identifiers, and lowers it to native Go, Python, or Rust, encoding each language's integer/float semantics. |
 | `targets/go/float_index_gen.go` | Generated Go (checked in, like Ax's `packages/<lang>`). Do not edit by hand — re-run `run.sh`. |
 | `targets/python/float_index_gen.py` | Generated Python (checked in). Do not edit by hand. |
 | `targets/rust/float_index_gen.rs` | Generated Rust (checked in). Do not edit by hand. |
@@ -91,16 +91,19 @@ bit-exact everywhere. The golden-vector gate is what keeps it honest.
   records/structs, collections, the bignum path, and Unicode tables — more IR
   vocabulary, all mechanical.
 - Three targets (Go, Python, Rust). Java/C++ are additional emitters.
-- The emitter is minimal — no standalone type-checker yet (it trusts
-  well-formed IR), and no identifier-sanitizer (a binding must avoid target
-  keywords; that is why `%false` was renamed for the Rust target).
+- The emitter **validates** the IR before emit (unknown intrinsics, wrong
+  arity, undefined bindings, invalid const types) and **sanitizes** identifiers
+  that collide with any target's keywords (e.g. `%false` → `false_`). It is
+  still arity/definedness checking, not full type inference, and the IR
+  vocabulary is scalar-only — no loops or aggregates yet.
 - This is the deterministic encoding/replay path only. The effectful shell
   (RNG, on-disk database, panic/exception mapping) stays a thin per-language
   layer — the same split the C ABI already draws.
 
 ## Possible next steps
 
-1. Widen the IR to the blob/base64 codec — the actual cross-language wire format.
-2. Give the emitter a real type-checker + identifier sanitizer (study Ax's Go compiler for the shape).
+1. Widen the IR to the blob/base64 codec — the actual cross-language wire format
+   (needs loops + byte-aggregate vocabulary; the real generalization test).
+2. Extend the validator from arity/definedness to full type inference/checking.
 3. Add Java / C++ targets to match Ax's full backend set.
 4. Write up a full design doc (IR spec, core/shell split, conformance-suite plan).

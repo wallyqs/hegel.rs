@@ -113,7 +113,7 @@ fn is_simple_float(x: f64) -> bool {
     let mut nan: bool;
     let mut sb_or_inf: bool;
     let mut bad: bool;
-    let mut ff: bool;
+    let mut false_: bool;
     let mut pow56f: f64;
     let mut ge: bool;
     let mut i: u64;
@@ -127,14 +127,14 @@ fn is_simple_float(x: f64) -> bool {
     nan = x.is_nan();
     sb_or_inf = (sb || inf);
     bad = (sb_or_inf || nan);
-    ff = false;
+    false_ = false;
     if bad {
-        return ff;
+        return false_;
     }
     pow56f = 72057594037927936f64;
     ge = (x >= pow56f);
     if ge {
-        return ff;
+        return false_;
     }
     i = (x as u64);
     back = (i as f64);

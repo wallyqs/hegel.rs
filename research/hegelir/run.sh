@@ -28,4 +28,21 @@ RSC="$TMP/rsc"; mkdir -p "$RSC"
 cp conformance/checker.rs targets/rust/float_index_gen.rs "$RSC"/
 ( cd "$RSC" && rustc -O checker.rs -o check && ./check "$TMP/vectors.tsv" )
 
+echo "==> validator: malformed IR must be rejected"
+cat > "$TMP/bad.axir" <<'EOF'
+module @bad version "0.1" {
+  op core.func @f {
+    body @entry(%x: u64) {
+      %y = core.call intrinsic.bogus(%x, %missing)
+      core.return %y
+    }
+  }
+}
+EOF
+if ( cd emitter && go run . "$TMP/bad.axir" go ) >/dev/null 2>"$TMP/err"; then
+  echo "    FAIL: malformed IR was accepted"; exit 1
+else
+  echo "    OK: rejected —"; sed 's/^/      /' "$TMP/err"
+fi
+
 echo "==> done"
